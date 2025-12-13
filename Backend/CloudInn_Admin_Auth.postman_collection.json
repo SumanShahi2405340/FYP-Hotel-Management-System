@@ -1,0 +1,70 @@
+{
+  "info": {
+    "name": "CloudInn Admin Auth API",
+    "_postman_id": "12345678-abcd-efgh-ijkl-987654321000",
+    "description": "Collection to test admin login, forgot-password, and OTP verification endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Admin Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"sumanjungshahi100@gmail.com\",\n  \"password\": \"secret@123\"\n}"
+        },
+        "url": {
+          "raw": "http://127.0.0.1:8000/admin/login/",
+          "protocol": "http",
+          "host": ["127.0.0.1"],
+          "port": "8000",
+          "path": ["admin", "login"]
+        }
+      }
+    },
+    {
+      "name": "Forgot Password (OTP Request)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"sumanjungshahi100@gmail.com\"\n}"
+        },
+        "url": {
+          "raw": "http://127.0.0.1:8000/admin/forgot-password/",
+          "protocol": "http",
+          "host": ["127.0.0.1"],
+          "port": "8000",
+          "path": ["admin", "forgot-password"]
+        }
+      }
+    },
+    {
+      "name": "Verify OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"sumanjungshahi100@gmail.com\",\n  \"otp\": \"123456\"\n}"
+        },
+        "url": {
+          "raw": "http://127.0.0.1:8000/admin/verify-otp/",
+          "protocol": "http",
+          "host": ["127.0.0.1"],
+          "port": "8000",
+          "path": ["admin", "verify-otp"]
+        }
+      }
+    }
+  ]
+}
