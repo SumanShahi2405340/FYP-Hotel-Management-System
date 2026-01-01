@@ -1,3 +1,4 @@
+// it helps when we need typescript else its doing nothing 
 {
   "compilerOptions": {
     "target": "ES2017",
@@ -29,6 +30,6 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
-  ],
+, "app/layout.js", "app/page.js"  ],
   "exclude": ["node_modules"]
 }

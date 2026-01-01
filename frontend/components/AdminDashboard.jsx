@@ -1,0 +1,277 @@
+'use client';
+import AnnouncementPanel from '@/components/AnnouncementPanel'; 
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { FaHome, FaCog, FaBullhorn, FaTools } from 'react-icons/fa';
+
+
+export default function AdminDashboard() {
+  const router = useRouter();
+
+  const [hotels, setHotels] = useState([
+    { id: 1, name: 'Hotel Everest', location: 'Kathmandu', contact: 'everest@example.com', reviews: '4.5/5', status: 'Active' },
+    { id: 2, name: 'Hotel Sunshine', location: 'Pokhara', contact: 'sunshine@example.com', reviews: '4.2/5', status: 'Active' },
+    { id: 3, name: 'KailashINN', location: 'NPJ', contact: '999999', reviews: '9.9', status: 'Inactive' },
+  ]);
+
+  const usageRanking = {
+    Jan: [
+      { name: 'Hotel Everest', usage: 120 },
+      { name: 'Hotel Sunshine', usage: 95 },
+      { name: 'KailashINN', usage: 60 },
+    ],
+    Feb: [
+      { name: 'Hotel Everest', usage: 130 },
+      { name: 'Hotel Sunshine', usage: 100 },
+      { name: 'KailashINN', usage: 70 },
+    ],
+    Mar: [
+      { name: 'Hotel Everest', usage: 140 },
+      { name: 'Hotel Sunshine', usage: 110 },
+      { name: 'KailashINN', usage: 80 },
+    ],
+  };
+
+  const [view, setView] = useState('all');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [commissionOpen, setCommissionOpen] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState('Jan');
+  const [announcementOpen, setAnnouncementOpen] = useState(false);
+
+
+  const handleRemove = (id) => {
+    setHotels(hotels.filter(h => h.id !== id));
+  };
+
+  const handleToggleStatus = (id) => {
+    setHotels(hotels.map(h =>
+      h.id === id ? { ...h, status: h.status === 'Active' ? 'Inactive' : 'Active' } : h
+    ));
+  };
+
+  const filteredHotels =
+    view === 'active'
+      ? hotels.filter(h => h.status === 'Active')
+      : view === 'inactive'
+      ? hotels.filter(h => h.status === 'Inactive')
+      : hotels;
+
+  const rankingRows = usageRanking[selectedMonth] || [];
+
+  return (
+    <div className="min-h-screen bg-cover bg-center" style={{ backgroundImage: "url('/admindash1.jpg')" }}>
+      {/* Sidebar */}
+      <div className={`fixed top-0 left-0 h-screen w-64 bg-gradient-to-b from-indigo-900/90 via-gray-900/80 to-black/70 backdrop-blur-md text-white flex flex-col justify-start p-6 z-20 transform transition-transform duration-300 shadow-2xl border-r border-gray-700/40 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="mb-10">
+          <h2 className="text-3xl font-extrabold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-green-400">
+            CloudInn
+          </h2>
+          <p className="text-sm text-gray-300">Hotel Management Platform</p>
+        </div>
+      
+        <nav className="space-y-2">
+          <button
+            onClick={() => setAnnouncementOpen(!announcementOpen)}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10 transition whitespace-nowrap">
+            <FaBullhorn /> <span>Send Announcement</span>
+          </button>
+
+
+            {/* Settings Dropdown */}
+          <div>
+            <button onClick={() => setSettingsOpen(!settingsOpen)} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10 transition w-full text-left">
+              <FaCog /> <span>Settings</span>
+            </button>
+
+            {settingsOpen && (
+              <div className="ml-6 mt-2 space-y-2">
+                <button
+                  onClick={() => router.push('/admin/commission-setting')}
+                  className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
+                  Commission Setting
+                </button>
+
+
+
+                <button
+                  onClick={() => {
+                  router.push('/admin/notification-setting?sidebar=true'); // ✅ triggers sidebar ON
+                }}
+                  // onClick={() => router.push('/admin/notification-setting')}
+                  className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
+                 Notifications & Setting
+                </button>
+
+
+
+                <button
+                  onClick={() => router.push('/admin/apply-system-updates')}
+                  className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
+                  Apply System Updates
+                </button>                
+              </div>
+
+            )}
+          </div>
+        </nav>
+        </div>
+
+      {/* Main Content */}
+      <div className={`transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'} p-6 relative z-10`}>
+
+        {/* Top Bar */}
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="bg-gradient-to-r from-gray-700/80 to-gray-900/80 text-white px-3 py-1 rounded shadow hover:from-gray-600/80 hover:to-gray-800/80 transition">
+              {sidebarOpen ? 'Hide Menu' : 'Show Menu'}
+            </button>
+            <h1 className="text-3xl font-bold text-white drop-shadow-lg">Admin Dashboard</h1>
+          </div>
+        </div>
+
+        {/* Notification Button */}
+        <div className="absolute top-4 right-4 flex items-center gap-5 z-30">
+          <button
+            onClick={() => router.push('/admin/notification-setting')}
+            className="relative -mt-5 text-4xl text-purple-600 hover:text-purple-700 transition">
+            🔔
+          </button>
+
+
+          {/* Register Button + Label */}
+          <div className="flex flex-col items-center">
+            <button
+              onClick={() => router.push('/admin/register')}
+              className="bg-green-500 hover:bg-green-600 text-white w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold shadow-lg"
+            >
+              +
+            </button>
+            <span className="text-sm font-semibold mt-1 text-white drop-shadow">
+              Register Hotel
+            </span>
+          </div>
+        </div>
+
+
+        {/* View Toggle Buttons */}
+        <div className="flex justify-center gap-3 mb-6 flex-wrap">
+          <button onClick={() => setView('all')} className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'all' ? 'bg-blue-600' : 'bg-blue-500 hover:bg-blue-600'} text-white`}>
+            All Hotels
+          </button>
+          <button onClick={() => setView('active')} className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'active' ? 'bg-green-600' : 'bg-green-500 hover:bg-green-600'} text-white`}>
+            Active Hotels
+          </button>
+          <button onClick={() => setView('inactive')} className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'inactive' ? 'bg-red-600' : 'bg-red-500 hover:bg-red-600'} text-white`}>
+            Inactive Hotels
+          </button>
+          <button onClick={() => setView('ranking')} className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'ranking' ? 'bg-orange-600' : 'bg-orange-500 hover:bg-orange-600'} text-white`}>
+            System Usage Ranking
+          </button>
+        </div>
+
+        {/* Month Selector */}
+        {view === 'ranking' && (
+          <div className="flex justify-end mb-4">
+            <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-white text-black px-3 py-1 rounded shadow">
+              {Object.keys(usageRanking).map(month => (
+                <option key={month} value={month}>{month}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Conditional Rendering */}
+        {view === 'ranking' ? (
+          <div className="bg-white/80 p-6 rounded-2xl shadow-2xl overflow-x-auto border border-gray-200">
+            <p className="mb-4 font-semibold text-gray-700 text-sm">Usage Ranking — {selectedMonth}</p>
+            <table className="table-fixed w-full border-collapse border border-gray-300 text-sm">
+              <thead>
+                <tr className="bg-gray-200 text-gray-700">
+                  <th className="border p-2 w-[60px]">Rank</th>
+                  <th className="border p-2 w-[200px]">Hotel Name</th>
+                  <th className="border p-2 w-[120px]">Usage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rankingRows.map((row, idx) => (
+                  <tr key={row.name} className="bg-white hover:bg-gray-50 transition">
+                    <td className="border p-2">{idx + 1}</td>
+                    <td className="border p-2">{row.name}</td>
+                    <td className="border p-2">{row.usage}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="bg-white/80 p-6 rounded-2xl shadow-2xl overflow-x-auto border border-gray-200">
+            <p className="mb-4 font-semibold text-gray-700 text-sm">Total Hotels: {filteredHotels.length}</p>
+            <table className="table-fixed w-full border-collapse border border-gray-300 text-sm">
+              <thead>
+                <tr className="bg-gray-200 text-gray-700">
+                  <th className="border p-2 w-[140px]">Hotel Name</th>
+                  <th className="border p-2 w-[100px]">Location</th>
+                  <th className="border p-2 w-[140px]">Contact</th>
+                  <th className="border p-2 w-[100px]">Reviews</th>
+                  <th className="border p-2 w-[80px]">Status</th>
+                  <th className="border p-2 w-[240px]">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredHotels.map((hotel, index) => (
+                  <tr key={hotel.id} className="bg-white hover:bg-gray-50 transition">
+                    <td className="border p-2">{index + 1}. {hotel.name}</td>
+                    <td className="border p-2">{hotel.location || '-'}</td>
+                    <td className="border p-2">{hotel.contact || '-'}</td>
+                    <td className="border p-2">{hotel.reviews}</td>
+                    <td className="border p-2">{hotel.status}</td>
+                    <td className="border p-2 whitespace-nowrap">
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => router.push('/admin/hotel-profile')} 
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full text-xs shadow"
+                        >
+                          Profile
+                        </button>
+
+                        {hotel.status === 'Active' ? (
+                          <button
+                            onClick={() => handleToggleStatus(hotel.id)}
+                            className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded-full text-xs shadow"
+                          >
+                            Deactivate
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleToggleStatus(hotel.id)}
+                            className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-full text-xs shadow"
+                          >
+                            Activate
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => handleRemove(hotel.id)}
+                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-xs shadow"
+                        >
+                          Remove
+                        </button>
+
+                        <AnnouncementPanel
+                          isOpen={announcementOpen}
+                          onClose={() => setAnnouncementOpen(false)}
+                        />
+
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+/* ====== Admin Dashboard Container ====== */
+.dashboard {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+/* ====== Header and Title ====== */
+.dashboard h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+/* ====== Register Button ====== */
+.register-button {
+  background-color: #0070f3;
+  color: white;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  margin-bottom: 20px;
+  cursor: pointer;
+}
+
+.register-button:hover {
+  background-color: #005bb5;
+}
+
+/* ====== Tabs ====== */
+.tabs {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.tab {
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: #e0e0e0;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.tab.active {
+  background-color: #0070f3;
+  color: white;
+}
+
+/* ====== Total Hotels Count ====== */
+.total-hotels {
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+/* ====== Hotel Table ====== */
+.hotel-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.hotel-table th,
+.hotel-table td {
+  padding: 12px;
+  border: 1px solid #ddd;
+  text-align: left;
+}
+
+.hotel-table th {
+  background-color: #f0f0f0;
+  font-weight: 600;
+}
+
+/* ====== Status Styling ====== */
+.status-active {
+  color: green;
+  font-weight: 600;
+}
+
+.status-inactive {
+  color: red;
+  font-weight: 600;
+}
+
+/* ====== Action Buttons ====== */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.action-button {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.action-button.profile {
+  background-color: #4caf50;
+  color: white;
+}
+
+.action-button.activate {
+  background-color: #0070f3;
+  color: white;
+}
+
+.action-button.deactivate {
+  background-color: #ff9800;
+  color: white;
+}
+
+.action-button.remove {
+  background-color: #f44336;
+  color: white;
+}
