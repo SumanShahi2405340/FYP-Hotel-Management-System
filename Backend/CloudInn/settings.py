@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    'django_extensions',
 
 
     # Optional extras (commented out until needed)
@@ -63,7 +64,7 @@ MIDDLEWARE = [
 
 
     'corsheaders.middleware.CorsMiddleware',
-]
+] 
 
 
 
@@ -142,3 +143,28 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'   # important for production
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+
+# Hotel Registratiom
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'hotel_db',
+        'USER': 'postgres',
+        'PASSWORD': 'secret@123',
+        'HOST': 'localhost',
+        'PORT': '5432',
+    }
+}
+
+
+#New For Hotel Registraton]
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'sumanjungshahi100@gmail.com'
+EMAIL_HOST_PASSWORD = 'tbaielqrmsytgfij'  # your Gmail app password
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+APPEND_SLASH = True # default is True
