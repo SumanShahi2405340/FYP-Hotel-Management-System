@@ -37,11 +37,7 @@ export default function NotificationSetting({ showMenu }) {
             <button className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700">
               Important Notifications
             </button>
-
-            <button className="px-4 py-2 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-black">
-              Email Notifications
-            </button>
-            
+  
             <button className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 whitespace-nowrap w-fit">
               System Alert Notifications
             </button>

@@ -12,16 +12,18 @@ export default function AdminOTPVerifyForm() {
   const email = searchParams.get('email');
   
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      console.log('Sending:', { email, otp });
-      const res = await api.post('/admin/verify-otp/', { email, otp });
-      setMessage(res.data.message || 'Login successful via OTP');
-    } catch (err) {
-      setMessage(err.response?.data?.error || 'OTP verification failed');
-    }
-  };
+  const handleSubmit  = async (e) => {
+  e.preventDefault();
+  try {
+    console.log("Verifying OTP for:", email, "with code:", otp);
+    const res = await api.post('/api/verify-otp/', { email, otp }); 
+    setMessage(res.data.message || 'Login successful via OTP');
+    // If you want to redirect after success:
+    router.push('/admin/dashboard');
+  } catch (err) {
+    setMessage(err.response?.data?.error || 'OTP verification failed');
+  }
+};
 
   return (
     <form onSubmit={handleSubmit} className="max-w-md mx-auto p-6 border rounded">

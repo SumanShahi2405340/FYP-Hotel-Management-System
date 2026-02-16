@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import api from "../utils/api";
+import { useState, useEffect } from "react";
 
 export default function ManageRooms() {
   const [showSidebar, setShowSidebar] = useState(true);
@@ -8,9 +9,15 @@ export default function ManageRooms() {
   const [showRoomsForm, setShowRoomsForm] = useState(false);
   const [showPriceForm, setShowPriceForm] = useState(false);
 
+  // Controlled inputs for inventory
   const [normalQty, setNormalQty] = useState("");
   const [deluxeQty, setDeluxeQty] = useState("");
   const [suiteQty, setSuiteQty] = useState("");
+
+  // Controlled inputs for prices
+  const [normalPrice, setNormalPrice] = useState("");
+  const [deluxePrice, setDeluxePrice] = useState("");
+  const [suitePrice, setSuitePrice] = useState("");
 
   const [roomPrices, setRoomPrices] = useState({
     normal: null,
@@ -25,49 +32,116 @@ export default function ManageRooms() {
     all: [],
   });
 
+  const INVENTORY_API = "/api/room-inventory/";
+  const PRICE_API = "/api/room-price/";
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        // Inventory
+        const invRes = await api.get(INVENTORY_API);
+        const invData = invRes.data;
+
+        const updated = {
+          normal: generateRooms(101, invData.normal_rooms),
+          deluxe: generateRooms(201, invData.deluxe_rooms),
+          suite: generateRooms(301, invData.suite_rooms),
+        };
+        updated.all = [...updated.normal, ...updated.deluxe, ...updated.suite];
+        setRoomData(updated);
+
+        // Prices
+        const priceRes = await api.get(PRICE_API);
+        const priceData = priceRes.data;
+
+        setRoomPrices({
+          normal: priceData.normal_price,
+          deluxe: priceData.deluxe_price,
+          suite: priceData.suite_price,
+        });
+      } catch (err) {
+        console.error("Error fetching data:", err.response?.data || err);
+      }
+    }
+
+    fetchData();
+  }, []);
+
   const generateRooms = (start, count) =>
     Array.from({ length: count }, (_, i) => ({
       number: start + i,
       status: "available",
     }));
 
-  const handleSaveAll = (e) => {
+  const handleSaveAll = async (e) => {
     e.preventDefault();
 
     const normal = Number(normalQty);
     const deluxe = Number(deluxeQty);
     const suite = Number(suiteQty);
 
-    if (!normal && !deluxe && !suite) {
+    if ([normalQty, deluxeQty, suiteQty].every((val) => val === "")) {
       alert("Please enter at least one quantity");
       return;
     }
 
-    const updated = {
-      normal: normal ? generateRooms(101, normal) : [],
-      deluxe: deluxe ? generateRooms(201, deluxe) : [],
-      suite: suite ? generateRooms(301, suite) : [],
-    };
+    try {
+      const response = await api.put(INVENTORY_API, {
+        normal_rooms: normal,
+        deluxe_rooms: deluxe,
+        suite_rooms: suite,
+      });
 
-    updated.all = [...updated.normal, ...updated.deluxe, ...updated.suite];
+      const inv = response.data;
 
-    setRoomData(updated);
-    alert("Room data updated (dummy only, no database used yet)");
+      const updated = {
+        normal: generateRooms(101, inv.normal_rooms),
+        deluxe: generateRooms(201, inv.deluxe_rooms),
+        suite: generateRooms(301, inv.suite_rooms),
+      };
+      updated.all = [...updated.normal, ...updated.deluxe, ...updated.suite];
+      setRoomData(updated);
 
-    setShowRoomsForm(false);
+      alert("Room data saved to backend!");
+      setShowRoomsForm(false);
+    } catch (err) {
+      console.error("Error saving inventory:", err.response?.data || err);
+      alert("Error saving inventory");
+    }
   };
 
-  const handleSavePrice = (e) => {
+  const handleSavePrice = async (e) => {
     e.preventDefault();
 
-    const normal = Number(e.target.normal.value);
-    const deluxe = Number(e.target.deluxe.value);
-    const suite = Number(e.target.suite.value);
+    const normal = Number(normalPrice);
+    const deluxe = Number(deluxePrice);
+    const suite = Number(suitePrice);
 
-    setRoomPrices({ normal, deluxe, suite });
-    alert("Room price updated (dummy only, no database used yet)");
+    if ([normalPrice, deluxePrice, suitePrice].every((val) => val === "")) {
+      alert("Please enter at least one price");
+      return;
+    }
 
-    setShowPriceForm(false);
+    try {
+      const response = await api.put(PRICE_API, {
+        normal_price: normal,
+        deluxe_price: deluxe,
+        suite_price: suite,
+      });
+
+      const updated = response.data;
+      setRoomPrices({
+        normal: updated.normal_price,
+        deluxe: updated.deluxe_price,
+        suite: updated.suite_price,
+      });
+
+      alert("Room prices saved to backend!");
+      setShowPriceForm(false);
+    } catch (err) {
+      console.error("Error saving prices:", err.response?.data || err);
+      alert("Error saving prices");
+    }
   };
 
   const renderRooms = (rooms) => (
@@ -99,7 +173,9 @@ export default function ManageRooms() {
           <button
             onClick={() => setShowRoomsForm((prev) => !prev)}
             className={`w-full text-left px-4 py-2 rounded-lg ${
-              showRoomsForm ? "bg-blue-600 text-white" : "bg-gray-100 hover:bg-gray-200"
+              showRoomsForm
+                ? "bg-blue-600 text-white"
+                : "bg-gray-100 hover:bg-gray-200"
             }`}
           >
             🛏️ Update Rooms
@@ -107,7 +183,9 @@ export default function ManageRooms() {
           <button
             onClick={() => setShowPriceForm((prev) => !prev)}
             className={`w-full text-left px-4 py-2 rounded-lg ${
-              showPriceForm ? "bg-blue-600 text-white" : "bg-gray-100 hover:bg-gray-200"
+              showPriceForm
+                ? "bg-blue-600 text-white"
+                : "bg-gray-100 hover:bg-gray-200"
             }`}
           >
             💰 Update Room Price
@@ -180,20 +258,23 @@ export default function ManageRooms() {
             <h2 className="text-xl font-bold mb-4">Update Room Price</h2>
             <form onSubmit={handleSavePrice} className="space-y-4">
               <input
-                name="normal"
                 type="number"
+                value={normalPrice}
+                onChange={(e) => setNormalPrice(e.target.value)}
                 className="w-full border p-2 rounded"
                 placeholder="Normal room price"
               />
               <input
-                name="deluxe"
                 type="number"
+                value={deluxePrice}
+                onChange={(e) => setDeluxePrice(e.target.value)}
                 className="w-full border p-2 rounded"
                 placeholder="Deluxe room price"
               />
               <input
-                name="suite"
                 type="number"
+                value={suitePrice}
+                onChange={(e) => setSuitePrice(e.target.value)}
                 className="w-full border p-2 rounded"
                 placeholder="Suite room price"
               />
@@ -219,7 +300,9 @@ export default function ManageRooms() {
             <h2 className="text-lg font-bold text-red-600">
               Normal Rooms{" "}
               {roomPrices.normal !== null && (
-                <span className="text-sm text-gray-600">– Rs {roomPrices.normal}</span>
+                <span className="text-sm text-gray-600">
+                  – Rs {roomPrices.normal}
+                </span>
               )}
             </h2>
             {renderRooms(roomData.normal)}
@@ -230,7 +313,9 @@ export default function ManageRooms() {
             <h2 className="text-lg font-bold text-purple-600">
               Deluxe Rooms{" "}
               {roomPrices.deluxe !== null && (
-                <span className="text-sm text-gray-600">– Rs {roomPrices.deluxe}</span>
+                <span className="text-sm text-gray-600">
+                  – Rs {roomPrices.deluxe}
+                </span>
               )}
             </h2>
             {renderRooms(roomData.deluxe)}
@@ -241,7 +326,9 @@ export default function ManageRooms() {
             <h2 className="text-lg font-bold text-green-600">
               Suites{" "}
               {roomPrices.suite !== null && (
-                <span className="text-sm text-gray-600">– Rs {roomPrices.suite}</span>
+                <span className="text-sm text-gray-600">
+                  – Rs {roomPrices.suite}
+                </span>
               )}
             </h2>
             {renderRooms(roomData.suite)}
@@ -250,4 +337,4 @@ export default function ManageRooms() {
       </main>
     </div>
   );
-}
+};

@@ -1,24 +1,14 @@
-# from django.urls import path, include
-# from rest_framework.routers import DefaultRouter
-# from .views import AdminLoginView, OTPRequestView, OTPVerifyView, HotelViewSet
-
-# router = DefaultRouter()
-# router.register(r'hotels', HotelViewSet)
-
-
-# urlpatterns = [
-#     path('login/', AdminLoginView.as_view(), name='admin-login'),        
-#     path('forgot-password/', OTPRequestView.as_view(), name='forgot-password'),
-#     path('verify-otp/', OTPVerifyView.as_view(), name='verify-otp'),
-#     path('', include(router.urls)),
-
-# ]
-
-
-
-
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+# from . import views
 from .views import (
+    # Auth-related views
+    AdminLoginView,
+    OTPRequestView,
+    OTPVerifyView,
+    HotelViewSet,
+
+    # Hotel management views
     RegisterHotelView,
     ListHotelsView,
     ActivateHotelView,
@@ -27,20 +17,104 @@ from .views import (
     HotelUpdateView,
     HotelProfileView,
     OwnerProfileView,
+
+    # Commission rules view 
+    CommissionRuleView,
+
+    # Commission payments views 
+    get_active_hotels, 
+    confirm_payments,
+
+    # Track Commission Revenue view 
+    track_commission_revenue,
+
+    # Admin Send Announcement view 
+    send_announcement,
+    # Admin recent announcement view
+    recent_announcements,
+    
+    # Owner Send Announcement view  
+    owner_send_announcement,
+    owner_recent_announcements,
+
+    # OwnerLoginView,
+
+    # Starred notifications views
+    OwnerStarredNotificationList,
+    OwnerStarredNotificationCreate,
+    OwnerStarredNotificationDelete,
+    RoomInventoryView,
+    RoomPriceView,
+    me,  
+  
 )
 
+
+
+# Router for DRF ViewSets
+router = DefaultRouter()
+router.register(r'hotels', HotelViewSet)
+
 urlpatterns = [
-    path("hotels/<int:pk>/", DeleteHotelView.as_view()),
+    # Authentication endpoints
+    path('admin-login/', AdminLoginView.as_view(), name='admin-login'),
+    path('forgot-password/', OTPRequestView.as_view(), name='forgot-password'),
+    path('verify-otp/', OTPVerifyView.as_view(), name='verify-otp'),
+
+    # Hotel management endpoints
+    path("hotels/<int:pk>/", DeleteHotelView.as_view()),  
     path("hotels/register", RegisterHotelView.as_view(), name="register-hotel"),
     path("hotels", ListHotelsView.as_view(), name="list-hotels"),
     path("hotels/<int:pk>/activate", ActivateHotelView.as_view(), name="activate-hotel"),
     path("hotels/<int:pk>/deactivate", DeactivateHotelView.as_view(), name="deactivate-hotel"),
     path("hotels/<int:pk>/update/", HotelUpdateView.as_view(), name="hotel-update"),
-    path("hotels/<int:pk>/hprofile/", HotelProfileView.as_view(), name="hotel-profile"), 
-    path("hotels/<int:pk>/oprofile/", OwnerProfileView.as_view(), name="owner-profile"),  # NEW
+    path("hotels/<int:pk>/hprofile/", HotelProfileView.as_view(), name="hotel-profile"),
+    path("hotels/<int:pk>/oprofile/", OwnerProfileView.as_view(), name="owner-profile"),
+
+    # Commission rules endpoint 
+    path("commission-rules/", CommissionRuleView.as_view(), name="commission-rules"),
+
+    # Commission payments endpoints 
+    path("commission-payments/active-hotels/", get_active_hotels, name="active-hotels"), 
+    path("commission-payments/confirm/", confirm_payments, name="confirm-payments"),
+    
+    # Track Commission Revenue endpoint 
+    path("commission-revenue/", track_commission_revenue, name="commission-revenue"),
+
+    # Send Announcement from Admin endpoint 
+    path("send-announcement/", send_announcement, name="send-announcement"),
+
+    # View Recent Announcement from Admin endpoint
+    path("recent-announcements/", recent_announcements, name="recent-announcements"),
+
+     # Send Announcement from Owner endpoint
+    path("owner-send-announcement/", owner_send_announcement, name="owner-send-announcement"),  # Owner → Admin/Receptionist 
+     
+    # View Recent Announcement from Owner endpoint
+    path("owner-recent-announcements/", owner_recent_announcements, name="owner-recent-announcements"),
+
+
+    # Owner Authentication endpoints
+    path('owner/register/', RegisterHotelView.as_view(), name='owner-register'),
+    # path('owner/login/', OwnerLoginView.as_view(), name='owner-login'),
+    
+
+    # Starred Notifications endpoints
+    path('starred-notifications/', OwnerStarredNotificationList.as_view(), name='owner-starred-list'),
+    path('star-notification/', OwnerStarredNotificationCreate.as_view(), name='owner-star-create'),
+    path('star-notification/<int:pk>/', OwnerStarredNotificationDelete.as_view(), name='owner-star-delete'),
+    # Room Management API endpoints
+    path("room-inventory/", RoomInventoryView.as_view(), name="room-inventory"),
+    path("room-price/", RoomPriceView.as_view(), name="room-price"),
+    # hotel info api (contains hotel_id and hotel_name retirved from token)
+    path("me/", me, name='me'),
+   
+  
+
+    # Include router URLs (for HotelViewSet)
+    path('', include(router.urls)),
+
+   
+
+
 ]
-
-
-
-
-

@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function AnnouncementPanel({ isOpen, onClose }) {
   const [message, setMessage] = useState('');
@@ -7,27 +7,62 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
   const [sendToManager, setSendToManager] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
 
-  const handleSend = () => {
+  // Optional: fetch recent announcements when panel opens
+  useEffect(() => {
+    if (isOpen) {
+      fetch("http://localhost:8000/api/recent-announcements/")
+        .then(res => res.json())
+        .then(data => setAnnouncements(data))
+        .catch(err => console.error("Error fetching announcements:", err));
+    }
+  }, [isOpen]);
+
+  const handleSend = async () => {
     if (!message.trim()) return;
 
-    const payload = {
-      content: message,
-      recipients: sendToManager
-        ? ['owner', 'manager']
-        : sendToOwner
-        ? ['owner']
-        : [],
-      timestamp: new Date().toISOString(),
-    };
+    try {
+      const response = await fetch("http://localhost:8000/api/send-announcement/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: message,
+          sendToOwner: sendToOwner,
+          sendToManager: sendToManager,
+        }),
+      });
 
-    // 🔧 Replace with actual DB/API call
-    console.log('Saving announcement to DB:', payload);
+      const data = await response.json();
 
-    setAnnouncements(prev => [payload, ...prev]);
-    setMessage('');
-    setSendToOwner(false);
-    setSendToManager(false);
-    onClose(); // close panel after sending
+      if (response.ok) {
+        const saved = [];
+        if (data.saved.owner) {
+          saved.push({
+            content: data.saved.owner.message,
+            recipients: ["owner"],
+            timestamp: data.saved.owner.created_at,
+          });
+        }
+        if (data.saved.manager) {
+          saved.push({
+            content: data.saved.manager.message,
+            recipients: ["manager"],
+            timestamp: data.saved.manager.created_at,
+          });
+        }
+
+        setAnnouncements(prev => [...saved, ...prev]);
+        setMessage('');
+        setSendToOwner(false);
+        setSendToManager(false);
+        onClose();
+      } else {
+        console.error("Error saving announcement:", data.error);
+      }
+    } catch (err) {
+      console.error("Network error:", err);
+    }
   };
 
   return (
@@ -72,7 +107,7 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
               checked={sendToManager}
               onChange={() => setSendToManager(!sendToManager)}
             />
-            <span className="text-sm text-gray-700">Send to Owner & Manager</span>
+            <span className="text-sm text-gray-700">Send to Receptionist</span>
           </label>
         </div>
 
@@ -87,7 +122,7 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
         {/* Announcement history */}
         <div className="mt-6 overflow-y-auto flex-1">
           <h3 className="text-sm font-semibold text-gray-600 mb-2">
-            Recent Announcements
+            Recent Admin Announcements
           </h3>
           <ul className="space-y-2">
             {announcements.map((a, idx) => (
@@ -97,7 +132,7 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
               >
                 <div className="mb-1">{a.content}</div>
                 <div className="text-xs text-gray-500">
-                  Sent to: {a.recipients.join(', ') || 'None'} •{' '}
+                  Sent to: {a.recipients.join(', ') || 'None'} From Admin •{' '} 
                   {new Date(a.timestamp).toLocaleString()}
                 </div>
               </li>

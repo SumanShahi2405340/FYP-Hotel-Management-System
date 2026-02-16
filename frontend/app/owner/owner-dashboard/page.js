@@ -1,7 +1,9 @@
-// app/owner/owner-dashboard/page.js
-import React from "react";
+'use client';
+
+import { use } from 'react';
 import OwnerDashboard from "@/components/OwnerDashboard";
 
-export default function Page() {
-  return <OwnerDashboard />;
+export default function Page({ params }) {
+  const { hotelId } = use(params);   //  unwrap the promise
+  return <OwnerDashboard hotelId={hotelId} />;
 }

@@ -9,16 +9,17 @@ export default function AdminForgotPasswordForm() {
   const router = useRouter();
 
   const requestOTP = async (e) => {
-    e.preventDefault();
-    try {
-      console.log("Sending OTP to:", email);
-      const res = await api.post('/admin/forgot-password/', { email });
-      setMessage(res.data.message || 'OTP sent to email');
-      router.push(`/admin/verify-otp?email=${email}`);
-    } catch (err) {
-      setMessage(err.response?.data?.error || 'Failed to send OTP');
-    }
-  };
+  e.preventDefault();
+  try {
+    console.log("Sending OTP to:", email);
+    const res = await api.post('/api/forgot-password/', { email }); 
+    setMessage(res.data.message || 'OTP sent to email');
+    router.push(`/admin/verify-otp?email=${email}`);
+  } catch (err) {
+    setMessage(err.response?.data?.error || 'Failed to send OTP');
+  }
+};
+
 
   return (
     <form onSubmit={requestOTP} className="max-w-md mx-auto p-6 border rounded">

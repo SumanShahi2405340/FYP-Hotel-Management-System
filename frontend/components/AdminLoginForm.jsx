@@ -12,17 +12,20 @@ export default function AdminLoginForm() {
   const router = useRouter();
 
   const handleLogin = async () => {
-    try {
-      const res = await api.post('/admin/login/', { email, password });
-      setMessage(res.data.message || 'Login successful');
+  try {
+    const res = await api.post('/api/admin-login/', { email, password });
 
-      if (res.status === 200) {
-        router.push('/admin/dashboard');
-      }
-    } catch (err) {
-      setMessage(err.response?.data?.error || 'Login failed');
+    // Check for success and message
+    if (res.status === 200 && res.data?.message) {
+      setMessage(res.data.message);
+      router.push('/admin/dashboard');
+    } else {
+      setMessage('Unexpected response');
     }
-  };
+  } catch (err) {
+    setMessage(err.response?.data?.error || 'Login failed');
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-200">
@@ -32,7 +35,7 @@ export default function AdminLoginForm() {
         <div className="flex flex-col items-center mb-6">
           <div className="w-16 h-16 rounded-full overflow-hidden mb-2 flex items-center justify-center bg-white">
             <img
-              src="/adminlog.png"
+              src="/admin-photo.jpg"
               alt="Chill Cat"
               className="w-full h-full object-cover block"
             />

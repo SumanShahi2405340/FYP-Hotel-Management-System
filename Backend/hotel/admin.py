@@ -11,10 +11,10 @@ class HotelAdmin(admin.ModelAdmin):
         "location",
         "status",
         "created_at",
-        "age",                # NEW
-        "owner_contact",      # NEW
-        "citizenship",        # NEW
-        "permanent_address",  # NEW
+        "age",                
+        "owner_contact",      
+        "citizenship",        
+        "permanent_address",  
     )
     search_fields = (
         "name",

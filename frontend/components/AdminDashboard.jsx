@@ -15,28 +15,7 @@ export default function AdminDashboard() {
   const [view, setView] = useState('all');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState('Jan');
   const [announcementOpen, setAnnouncementOpen] = useState(false);
-
-
-  //  Usage ranking mock data
-  const usageRanking = {
-    Jan: [
-      { name: 'Hotel Everest', usage: 120 },
-      { name: 'Hotel Sunshine', usage: 95 },
-      { name: 'KailashINN', usage: 60 },
-    ],
-    Feb: [
-      { name: 'Hotel Everest', usage: 130 },
-      { name: 'Hotel Sunshine', usage: 100 },
-      { name: 'KailashINN', usage: 70 },
-    ],
-    Mar: [
-      { name: 'Hotel Everest', usage: 140 },
-      { name: 'Hotel Sunshine', usage: 110 },
-      { name: 'KailashINN', usage: 80 },
-    ],
-  };
 
 
   // Fetch Hotels Data from Database
@@ -131,7 +110,7 @@ export default function AdminDashboard() {
 
   //  No local filtering needed, backend handles it
   const filteredHotels = hotels;
-  const rankingRows = usageRanking[selectedMonth] || [];
+ 
 
   return (
     <div className="min-h-screen bg-cover bg-center" style={{ backgroundImage: "url('/admindash1.jpg')" }}>
@@ -227,55 +206,9 @@ export default function AdminDashboard() {
           <button onClick={() => { setView('inactive'); fetchHotels('inactive'); }} className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'inactive' ? 'bg-red-600' : 'bg-red-500 hover:bg-red-600'} text-white`}>
             Inactive Hotels
           </button>
-          <button onClick={() => setView('ranking')} className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'ranking' ? 'bg-orange-600' : 'bg-orange-500 hover:bg-orange-600'} text-white`}>
-            System Usage Ranking
-          </button>
         </div>
 
-        {/* Month Selector */}
-        {view === 'ranking' && (
-          <div className="flex justify-end mb-4">
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-white text-black px-3 py-1 rounded shadow"
-            >
-              {Object.keys(usageRanking).map((month) => (
-                <option key={month} value={month}>
-                  {month}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Conditional Rendering */}
-        {view === 'ranking' ? (
-          <div className="bg-white/80 p-6 rounded-2xl shadow-2xl overflow-x-auto border border-gray-200">
-            <p className="mb-4 font-semibold text-gray-700 text-sm">
-              Usage Ranking — {selectedMonth}
-            </p>
-            <table className="table-fixed w-full border-collapse border border-gray-300 text-sm">
-              <thead>
-                <tr className="bg-gray-200 text-gray-700">
-                  <th className="border p-2 w-[60px]">Rank</th>
-                  <th className="border p-2 w-[200px]">Hotel Name</th>
-                  <th className="border p-2 w-[120px]">Usage</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rankingRows.map((row, idx) => (
-                  <tr key={row.name} className="bg-white hover:bg-gray-50 transition">
-                    <td className="border p-2">{idx + 1}</td>
-                    <td className="border p-2">{row.name}</td>
-                    <td className="border p-2">{row.usage}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-        ) : (
+     
           <div className="bg-white/80 p-6 rounded-2xl shadow-2xl overflow-x-auto border border-gray-200">
             <p className="mb-4 font-semibold text-gray-700 text-sm">
               Total Hotels: {filteredHotels.length}
@@ -321,7 +254,6 @@ export default function AdminDashboard() {
                           {hotel.status === 'Active' ? 'Deactivate' : 'Activate'}
                         </button>
 
-
                         {/* Remove button with permanent delete logic */}
                         <button
                           onClick={() => handleRemove(hotel.id)}
@@ -336,7 +268,6 @@ export default function AdminDashboard() {
               </tbody>
             </table>
           </div>
-        )}
 
         {/* Announcement Panel */}
         <AnnouncementPanel

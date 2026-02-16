@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@geist-ui/react": "^2.2.5",
+    "@heroicons/react": "^2.2.0",
     "axios": "^1.13.2",
     "chart.js": "^4.5.1",
     "next": "^16.0.10",

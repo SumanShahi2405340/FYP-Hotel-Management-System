@@ -1,24 +1,9 @@
-# from django.db import models
-
-# class Hotel(models.Model):
-#     name = models.CharField(max_length=255)
-#     owner = models.CharField(max_length=255)
-#     contact = models.CharField(max_length=255)
-#     email = models.EmailField()
-#     location = models.CharField(max_length=255)
-#     pan = models.CharField(max_length=100)
-
-#     is_active = models.BooleanField(default=True)
-#     review_score = models.DecimalField(max_digits=3, decimal_places=1, default=0.0)
-#     usage_score = models.IntegerField(default=0)
-#     created_at = models.DateTimeField(auto_now_add=True)
-
-#     def __str__(self):
-#         return self.name
-
-
 from django.db import models
+from django.contrib.auth.models import User 
+from django.utils import timezone 
 
+
+# HOTEL MODEL
 class Hotel(models.Model):
     STATUS_CHOICES = [
         ("Active", "Active"),
@@ -40,14 +25,103 @@ class Hotel(models.Model):
 
     # Replace is_active with status field
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Active")
+    registered_on = models.DateField(default=timezone.now) #added logic for confirm comission payments
 
     review_score = models.DecimalField(max_digits=3, decimal_places=1, default=0.0)
     usage_score = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # link hotel to user for each hotel to have separte pannel 
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="hotel", null=True, blank=True)
+
     def __str__(self):
         return self.name
+
+
+# COMMISSION RULE MODEL
+class CommissionRule(models.Model):
+    rule_id = models.CharField(max_length=10, unique=True)
+    name = models.CharField(max_length=100)
+    description = models.TextField()
+    effective_date = models.DateField()
+
+    def __str__(self):
+        return f"{self.rule_id} - {self.name}"
+
+
+# COMMISSION PAYMENT MODEL
+class CommissionPayment(models.Model):
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="payments")
+    payment_id = models.CharField(max_length=20)  # e.g. PID-32
+    amount = models.CharField(max_length=20)      # e.g. NPR 8,000
+    status = models.CharField(max_length=20)      # Pending / Paid
+    start_due_date = models.CharField(max_length=20)  # e.g. 2025-12-15/25
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.payment_id} - {self.hotel.name} - {self.status}"
+
+
+
+# Announcement Model for Admin
+class SendAdminAnnouncement(models.Model):
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"SendAdminAnnouncement({self.message[:30]})"
     
 
+# Announcement Model for Owner
+class SendOwnerAnnouncement(models.Model):
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
- 
+    def __str__(self):
+        return f"SendOwnerAnnouncement({self.message[:30]})"
+
+# Announcement Model for Receptionist
+class SendReceptionistAnnouncement(models.Model):
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"SendReceptionistAnnouncement({self.message[:30]})"
+
+
+
+class OwnerStarredNotification(models.Model):
+    # user is now optional, so you can store stars without requiring login
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    announcement = models.ForeignKey(SendOwnerAnnouncement, on_delete=models.CASCADE)
+    starred_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'announcement')  # still prevents duplicates if user is set
+
+    def __str__(self):
+        if self.user:
+            return f"{self.user.username} starred announcement {self.announcement.id}"
+        return f"Anonymous star for announcement {self.announcement.id}"
+
+
+# ROOM INVENTORY MODEL
+class RoomInventory(models.Model):
+    hotel = models.OneToOneField(Hotel, on_delete=models.CASCADE, related_name="inventory")
+    normal_rooms = models.IntegerField(default=0)
+    deluxe_rooms = models.IntegerField(default=0)
+    suite_rooms = models.IntegerField(default=0)
+
+    def __str__(self):
+        return f"Inventory: N={self.normal_rooms}, D={self.deluxe_rooms}, S={self.suite_rooms}"
+
+
+# ROOM PRICE MODEL
+class RoomPrice(models.Model):
+    hotel = models.OneToOneField(Hotel, on_delete=models.CASCADE, related_name="prices")
+    normal_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    deluxe_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    suite_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    def __str__(self):
+        return f"Prices for {self.hotel.name}"
