@@ -22,29 +22,41 @@ const dummyBookings = [
 
 export default function ViewBookings() {
   return (
-    <table
-      border="1"
-      cellPadding="10"
-      style={{ width: "100%", textAlign: "left", marginTop: "20px" }}
+    <div
+      style={{
+        backgroundColor: "rgba(255,255,255,0.75)", // semi-transparent white
+        backdropFilter: "blur(6px)",                // frosted glass effect
+        padding: "20px",
+        borderRadius: "12px",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+        marginTop: "20px",
+      }}
     >
-      <thead>
-        <tr>
-          <th>Customer Name</th>
-          <th>Contact</th>
-          <th>Room Number / Class</th>
-          <th>Stay Days</th>
-        </tr>
-      </thead>
-      <tbody>
-        {dummyBookings.map((booking, index) => (
-          <tr key={index}>
-            <td>{booking.name}</td>
-            <td>{booking.contact}</td>
-            <td>{booking.room}</td>
-            <td>{booking.days}</td>
+      <h2 style={{ textAlign: "center", marginBottom: "15px" }}>View Bookings</h2>
+      <table
+        border="1"
+        cellPadding="10"
+        style={{ width: "100%", textAlign: "left", backgroundColor: "rgba(255,255,255,0.9)" }}
+      >
+        <thead>
+          <tr>
+            <th>Customer Name</th>
+            <th>Contact</th>
+            <th>Room Number / Class</th>
+            <th>Stay Days</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {dummyBookings.map((booking, index) => (
+            <tr key={index}>
+              <td>{booking.name}</td>
+              <td>{booking.contact}</td>
+              <td>{booking.room}</td>
+              <td>{booking.days}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

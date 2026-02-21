@@ -45,7 +45,12 @@ from .views import (
     OwnerStarredNotificationDelete,
     RoomInventoryView,
     RoomPriceView,
-    me,  
+    me,
+    ManageMaintenanceRequestListCreateView,
+    ManageMaintenanceRequestDetailView,
+    register_receptionist,
+    get_hotel_receptionists,
+
   
 )
 
@@ -103,12 +108,21 @@ urlpatterns = [
     path('starred-notifications/', OwnerStarredNotificationList.as_view(), name='owner-starred-list'),
     path('star-notification/', OwnerStarredNotificationCreate.as_view(), name='owner-star-create'),
     path('star-notification/<int:pk>/', OwnerStarredNotificationDelete.as_view(), name='owner-star-delete'),
+
     # Room Management API endpoints
     path("room-inventory/", RoomInventoryView.as_view(), name="room-inventory"),
     path("room-price/", RoomPriceView.as_view(), name="room-price"),
     # hotel info api (contains hotel_id and hotel_name retirved from token)
     path("me/", me, name='me'),
-   
+
+    # Maintenance Request Endpoint
+    path("requests/", ManageMaintenanceRequestListCreateView.as_view(), name="requests_list_create"),
+    path("requests/<int:pk>/", ManageMaintenanceRequestDetailView.as_view(), name="request_detail"),
+
+    path("receptionist/register/", register_receptionist, name="register_receptionist"),
+    path("hotel/receptionists/", get_hotel_receptionists, name="get_hotel_receptionists"),
+
+
   
 
     # Include router URLs (for HotelViewSet)

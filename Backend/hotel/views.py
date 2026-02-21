@@ -14,14 +14,16 @@ from rest_framework.decorators import api_view
 from .models import Hotel, CommissionRule, CommissionPayment
 from .models import SendAdminAnnouncement, SendOwnerAnnouncement, SendReceptionistAnnouncement
 from .models import OwnerStarredNotification
-from .models import RoomInventory, RoomPrice
+from .models import RoomInventory, RoomPrice, ManageMaintenanceRequest, Receptionist
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework.views import APIView
 from rest_framework.decorators import permission_classes
+from rest_framework.decorators import api_view
+from django.contrib.auth.hashers import make_password
+import random, string
 # from rest_framework_simplejwt.tokens import RefreshToken
 
- 
+
+
 from .serializers import (
     AdminLoginSerializer,
     OTPRequestSerializer,
@@ -31,7 +33,7 @@ from .serializers import (
     CommissionRuleSerializer,
     CommissionPaymentSerializer,
     CommissionRevenueSerializer,
-    SendAdminAnnouncementSerializer,
+    #SendAdminAnnouncementSerializer,
     SendOwnerAnnouncementSerializer,
     SendReceptionistAnnouncementSerializer,
 
@@ -39,6 +41,9 @@ from .serializers import (
     # OwnerLoginSerializer,
     RoomInventorySerializer,
     RoomPriceSerializer,
+    ManageMaintenanceRequestSerializer,
+    ReceptionistSerializer,
+
 )
 
 
@@ -60,10 +65,12 @@ class AdminLoginView(APIView):
         email = serializer.validated_data['email']
         password = serializer.validated_data['password']
 
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
+        # Allow duplicate emails: pick the first match
+        users = User.objects.filter(email=email)
+        if not users.exists():
             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        user = users.first()
 
         # Authenticate using username (Django default)
         user = authenticate(request, username=user.username, password=password)
@@ -177,6 +184,65 @@ class RegisterHotelView(APIView):
         send_mail(subject, message, "please-reply@cloudinn.com", [data["email"]], fail_silently=False)
 
         return Response({"message": "Hotel registered successfully", "hotel": HotelSerializer(hotel).data, "owner_user": user.username}, status=201)
+    
+
+
+#REceptionist Register View
+def generate_password(length=8):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+@api_view(["POST"])
+def register_receptionist(request):
+    serializer = ReceptionistSerializer(data=request.data)
+    if serializer.is_valid():
+        email = serializer.validated_data["email"]
+        username = email  # use email as username
+        password = generate_password()
+
+        if User.objects.filter(username=username).exists():
+            return Response({"error": "Receptionist with this email already exists."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.create(
+            username=username,
+            email=email,
+            password=make_password(password)
+        )
+
+        receptionist = serializer.save(user=user)
+
+        hotel_name = receptionist.hotel.name if receptionist.hotel else "Hotel"
+
+        send_mail(
+            subject=f"Receptionist Account Created for {hotel_name}",
+            message=f"Dear {receptionist.name},\n\nYour account for {hotel_name} has been created.\nUsername: {username}\nPassword: {password}",
+            from_email="admin@cloudinn.com",
+            recipient_list=[email],
+        )
+
+        return Response({"message": f"Receptionist registered for {hotel_name} and credentials sent."},
+                        status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+#REceptionist Get Details View
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_hotel_receptionists(request):
+    # Check if logged-in user is linked to a hotel
+    hotel = getattr(request.user, "hotel", None)
+    if not hotel:
+        return Response({"error": "No hotel linked to this account"}, status=400)
+
+    # Fetch receptionists belonging to that hotel
+    receptionists = Receptionist.objects.filter(hotel=hotel)
+    serializer = ReceptionistSerializer(receptionists, many=True)
+    return Response(serializer.data)
+
+
+
+
 
 
 class ListHotelsView(ListAPIView):
@@ -631,3 +697,14 @@ class RoomPriceView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Receptionist: create new requests, list all
+class ManageMaintenanceRequestListCreateView(generics.ListCreateAPIView):
+    queryset = ManageMaintenanceRequest.objects.all()
+    serializer_class = ManageMaintenanceRequestSerializer
+
+# Owner: view details, update status,Delete if needed
+class ManageMaintenanceRequestDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = ManageMaintenanceRequest.objects.all()
+    serializer_class = ManageMaintenanceRequestSerializer

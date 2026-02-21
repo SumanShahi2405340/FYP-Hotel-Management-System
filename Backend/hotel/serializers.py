@@ -3,7 +3,9 @@ from .models import Hotel
 from .models import CommissionRule, CommissionPayment
 from .models import SendOwnerAnnouncement, SendReceptionistAnnouncement, SendAdminAnnouncement
 from .models import OwnerStarredNotification
-from .models import RoomInventory,RoomPrice
+from .models import RoomInventory,RoomPrice,ManageMaintenanceRequest, Receptionist
+
+
 # from django.contrib.auth import authenticate
 
 
@@ -122,9 +124,8 @@ class OwnerStarredNotificationSerializer(serializers.ModelSerializer):
 
 
 
-# -------------------------
+
 # ROOM INVENTORY / PRICE SERIALIZERS
-# -------------------------
 class RoomInventorySerializer(serializers.ModelSerializer):
     class Meta:
         model = RoomInventory
@@ -135,3 +136,21 @@ class RoomPriceSerializer(serializers.ModelSerializer):
     class Meta:
         model = RoomPrice
         fields = ['id',"normal_price", "deluxe_price", "suite_price"]
+
+
+
+# NEW: Manage Maintenance Request Serializer
+class ManageMaintenanceRequestSerializer(serializers.ModelSerializer):
+    hotel_name = serializers.CharField(source='hotel.name', read_only=True)
+
+    class Meta:
+        model = ManageMaintenanceRequest
+        fields = "__all__"
+
+
+# NEW: Receptionist Serializer
+class ReceptionistSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Receptionist
+        fields = "__all__"
+        read_only_fields = ["user"]  # user account is created separately

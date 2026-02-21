@@ -16,6 +16,16 @@ export default function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [announcementOpen, setAnnouncementOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+const handleLogout = () => {
+  // Clear any session/localStorage tokens if you use them
+  localStorage.removeItem("authToken"); // example, adjust to your app
+  sessionStorage.clear();
+
+  // Redirect to login/role page
+  router.push("http://localhost:3000/role");
+};
 
 
   // Fetch Hotels Data from Database
@@ -111,55 +121,75 @@ export default function AdminDashboard() {
   //  No local filtering needed, backend handles it
   const filteredHotels = hotels;
  
+return (
+  <div className="min-h-screen bg-cover bg-center" style={{ backgroundImage: "url('/admindash1.jpg')" }}>
+    {/* Sidebar */}
+    <div
+      className={`fixed top-0 left-0 h-screen w-64 
+        bg-gradient-to-b from-indigo-900/90 via-gray-900/80 to-black/70 
+        backdrop-blur-md text-white flex flex-col justify-start p-6 z-20 
+        transform transition-transform duration-300 shadow-2xl 
+        border-r border-gray-700/40 
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+    >
+      <div className="mb-10">
+        <h2 className="text-3xl font-extrabold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-green-400">
+          CloudInn
+        </h2>
+        <p className="text-sm text-gray-300">Hotel Management Platform</p>
+      </div>
+    
+      <nav className="space-y-2 flex-1">
+        <button
+          onClick={() => setAnnouncementOpen(!announcementOpen)}
+          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10 transition whitespace-nowrap">
+          <FaBullhorn /> <span>Send Announcement</span>
+        </button>
 
-  return (
-    <div className="min-h-screen bg-cover bg-center" style={{ backgroundImage: "url('/admindash1.jpg')" }}>
-      {/* Sidebar */}
-      <div className={`fixed top-0 left-0 h-screen w-64 bg-gradient-to-b from-indigo-900/90 via-gray-900/80 to-black/70 backdrop-blur-md text-white flex flex-col justify-start p-6 z-20 transform transition-transform duration-300 shadow-2xl border-r border-gray-700/40 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="mb-10">
-          <h2 className="text-3xl font-extrabold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-green-400">
-            CloudInn
-          </h2>
-          <p className="text-sm text-gray-300">Hotel Management Platform</p>
-        </div>
-      
-        <nav className="space-y-2">
+        {/* Settings Dropdown */}
+        <div>
           <button
-            onClick={() => setAnnouncementOpen(!announcementOpen)}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10 transition whitespace-nowrap">
-            <FaBullhorn /> <span>Send Announcement</span>
+            onClick={() => setSettingsOpen(!settingsOpen)}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10 transition w-full text-left"
+          >
+            <FaCog /> <span>Settings</span>
           </button>
 
-          {/* Settings Dropdown */}
-          <div>
-            <button onClick={() => setSettingsOpen(!settingsOpen)} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10 transition w-full text-left">
-              <FaCog /> <span>Settings</span>
-            </button>
+          {settingsOpen && (
+            <div className="ml-6 mt-2 space-y-2">
+              <button
+                onClick={() => router.push('/admin/commission-setting')}
+                className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
+                Commission Setting
+              </button>
 
-            {settingsOpen && (
-              <div className="ml-6 mt-2 space-y-2">
-                <button
-                  onClick={() => router.push('/admin/commission-setting')}
-                  className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
-                  Commission Setting
-                </button>
+              <button
+                onClick={() => router.push('/admin/notification-setting?sidebar=true')}
+                className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
+                Notifications & Setting
+              </button>
 
-                <button
-                  onClick={() => router.push('/admin/notification-setting?sidebar=true')}
-                  className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
-                 Notifications & Setting
-                </button>
+              <button
+                onClick={() => router.push('/admin/apply-system-updates')}
+                className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
+                Apply System Updates
+              </button>                
+            </div>
+          )}
+        </div>
+      </nav>
 
-                <button
-                  onClick={() => router.push('/admin/apply-system-updates')}
-                  className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
-                  Apply System Updates
-                </button>                
-              </div>
-            )}
-          </div>
-        </nav>
+      {/* Logout button at bottom center */}
+      <div className="mt-auto flex justify-center">
+        <button
+          onClick={() => setShowLogoutConfirm(true)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+        >
+          Logout
+        </button>
       </div>
+    </div>
+
 
       {/* Main Content */}
       <div className={`transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'} p-6 relative z-10`}>
@@ -184,7 +214,7 @@ export default function AdminDashboard() {
 
           <div className="flex flex-col items-center">
             <button
-              onClick={() => router.push('/admin/register')}
+              onClick={() => router.push('/admin/register-hotel')}
               className="bg-green-500 hover:bg-green-600 text-white w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold shadow-lg"
             >
               +
@@ -274,9 +304,32 @@ export default function AdminDashboard() {
           isOpen={announcementOpen}
           onClose={() => setAnnouncementOpen(false)}
         />
-      </div>
-    </div>
-  );
+
+        {/* Logout Confirmation Modal */}
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-lg p-6 w-80 text-center">
+              <h2 className="text-lg font-semibold mb-4">Do you really want to logout?</h2>
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={handleLogout}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 transition"
+                >
+                  No
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+  </div>
+  </div>
+);
 }
 
 

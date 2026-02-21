@@ -36,6 +36,30 @@ class Hotel(models.Model):
 
     def __str__(self):
         return self.name
+    
+
+class Receptionist(models.Model):
+    STATUS_CHOICES = [
+        ("Active", "Active"),
+        ("Inactive", "Inactive"),
+    ]
+
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="receptionists", null=True, blank=True)  # link to hotel
+    name = models.CharField(max_length=255)
+    age = models.PositiveIntegerField(null=True, blank=True)
+    email = models.EmailField(unique=True)
+    contact = models.CharField(max_length=20)
+    permanent_address = models.CharField(max_length=255, null=True, blank=True)
+    citizenship = models.CharField(max_length=50, null=True, blank=True)
+    joined_date = models.DateField(default=timezone.now)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Active")
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="receptionist", null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.email})"
+
+
 
 
 # COMMISSION RULE MODEL
@@ -125,3 +149,24 @@ class RoomPrice(models.Model):
 
     def __str__(self):
         return f"Prices for {self.hotel.name}"
+
+
+# Manage Maintenance Requests Model
+class ManageMaintenanceRequest(models.Model):
+    STATUS_CHOICES = [
+        ("Pending", "Pending"),
+        ("In Progress", "In Progress"),
+        ("Resolved", "Resolved"),
+    ]
+
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="maintenance_requests", null=True, blank=True)
+    room = models.CharField(max_length=100)
+    issue = models.TextField()
+    reported_by = models.CharField(max_length=100)
+    date = models.DateField(default=timezone.now)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Pending")
+
+    def __str__(self):
+        return f"{self.room} - {self.issue} ({self.status})"
+    
+
