@@ -17,7 +17,7 @@ const OwnerDashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [hotel, setHotel] = useState(null);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false); // modal state
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false); 
   const router = useRouter();
 
   useEffect(() => {
@@ -40,14 +40,14 @@ const OwnerDashboard = () => {
     <div className="min-h-screen flex">
       {/* Sidebar */}
       <div
-        className={`fixed top-0 left-0 h-screen w-64 
+        className={`fixed top-0 left-0 h-screen w-72   /* widened from w-64 */
           bg-gradient-to-b from-indigo-900/90 via-gray-900/80 to-black/70 
           backdrop-blur-md text-white flex flex-col justify-start p-6 z-20 
           transform transition-transform duration-300 shadow-2xl 
           border-r border-gray-700/40 
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        {/* Hotel Profile button */}
+        {/* Hotel Profile */}
         <div className="flex flex-col items-center mb-4">
           <button
             onClick={() => hotel && router.push(`/owner/hotel-profile/${hotel.hotel_id}`)}
@@ -69,21 +69,42 @@ const OwnerDashboard = () => {
           </h2>
         </div>
 
-        {/* Sidebar buttons */}
-        <button onClick={() => setActivePanel("announcement")}
-          className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
+        {/* Sidebar buttons above Settings */}
+        <button 
+          onClick={() => setActivePanel("announcement")}
+          className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
+        >
           <span className="text-white font-bold">Send Announcements</span>
         </button>
-        <button onClick={() => router.push("/owner/manage-roomsprice")} className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
+
+        <button 
+          onClick={() => router.push("/owner/manage-roomsprice")} 
+          className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
+        >
           <span className="text-white font-bold">Manage Rooms</span>
         </button>
-        <button onClick={() => router.push("/owner/manage-maintenancerequests")} className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
-          <span className="text-white font-bold">Manage Maintenance Requests</span>
-        </button>
-        <button onClick={() => router.push("/owner/manage-staffnattendance")} className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
-          <span className="text-white font-bold">Manage Staff&Attendance</span>
+
+        <button 
+          onClick={() => router.push("/owner/manage-staffnattendance")} 
+          className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
+        >
+          <span className="text-white font-bold">Manage Staff & Attendance</span>
         </button>
 
+        <button 
+          onClick={() => router.push("/owner/manage-promotionsdiscounts")} 
+          className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
+        >
+          <span className="text-white font-bold">Manage Promotions/Discounts</span>
+        </button>
+
+        <button 
+          onClick={() => router.push("/owner/manage-maintenancerequests")} 
+          className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
+        >
+          <span className="text-white font-bold">Manage Maintenance Requests</span>
+        </button>
+        
         {/* Settings */}
         <button 
           onClick={() => setSettingsOpen(!settingsOpen)} 
@@ -95,19 +116,22 @@ const OwnerDashboard = () => {
 
         {settingsOpen && (
           <div className="flex flex-col gap-2 ml-4 mt-2">
-            <button onClick={() => router.push("/owner/owner-comission-setting")} className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
+            <button 
+              onClick={() => router.push("/owner/owner-comission-setting")} 
+              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left"
+            >
               Commission Setting
             </button>
-            <button onClick={() => router.push('/owner/owner-notification-setting?sidebar=true')} className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
+            <button 
+              onClick={() => router.push('/owner/owner-notification-setting?sidebar=true')} 
+              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left"
+            >
               Notifications & Setting
-            </button>
-            <button onClick={() => router.push("/owner/manage-promotionsdiscounts")} className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
-              Promotions/Discounts Setting
             </button>
           </div>
         )}
 
-        {/* Logout button at bottom center */}
+        {/* Logout button */}
         <div className="mt-auto flex justify-center">
           <button
             onClick={() => setShowLogoutConfirm(true)}
@@ -118,9 +142,11 @@ const OwnerDashboard = () => {
         </div>
       </div>
 
+
+
       {/* Main Content */}
       <div 
-        className={`flex-1 p-5 transition-all duration-300 ${sidebarOpen ? "ml-64" : "ml-0"}`}
+        className={`flex-1 p-5 transition-all duration-300 ${sidebarOpen ? "ml-72" : "ml-0"}`}  // adjusted margin to match wider sidebar
         style={{ 
           backgroundImage: "url('/hprofile3.jpg')", 
           backgroundSize: "cover", 
@@ -135,9 +161,12 @@ const OwnerDashboard = () => {
               {sidebarOpen ? "Hide Menu" : "Show Menu"}
             </button>
           </div>
-          <h1 className="text-3xl font-bold text-green-400 drop-shadow-lg text-center">
-            Owner Dashboard
-          </h1>
+          {/* Transparent Container */}
+          <div className="bg-white/10 backdrop-blur-md rounded-lg shadow-lg p-4 max-w-4xl mx-auto">
+              <h1 className="text-3xl font-bold text-green-400 drop-shadow-lg text-center">
+                  Owner Dashboard
+              </h1>   
+          </div>  
           <div className="flex justify-end">
             <div className="relative inline-block">
               <button onClick={() => router.push('/owner/owner-notification-setting')} className="text-4xl text-purple-600 hover:text-purple-700 transition">
@@ -158,19 +187,13 @@ const OwnerDashboard = () => {
           <button onClick={() => setActivePanel("earnings")} className="px-4 py-2 bg-blue-600 text-white rounded">View Earning Reports</button>
         </div>
 
-        {/* Panels aligned at same height */}
-        <div className="flex gap-6 mb-6">
-          {activePanel === "announcement" && (
-            <div className="flex-1">
-              <OwnerAnnouncementPanel
-                isOpen={true}
-                onClose={() => setActivePanel(null)}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Other Conditional Views */}
+        {/* Panels */}
+        {activePanel === "announcement" && (
+          <OwnerAnnouncementPanel
+            isOpen={true}
+            onClose={() => setActivePanel(null)}
+          />
+        )}
         {activePanel === "bookings" && <ViewBookings />}
         {activePanel === "earnings" && <ViewEarningReports />}
         {activePanel === "reviews" && <ReviewsAndFeedbacks />}
@@ -206,5 +229,13 @@ const OwnerDashboard = () => {
 };
 
 export default OwnerDashboard;
+
+
+
+
+
+
+
+
 
 

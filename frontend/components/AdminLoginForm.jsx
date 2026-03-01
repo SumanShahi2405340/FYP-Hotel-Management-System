@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import api from '../utils/api';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import axios from 'axios';
 
 export default function AdminLoginForm() {
   const [email, setEmail] = useState('');
@@ -11,21 +11,26 @@ export default function AdminLoginForm() {
   const [message, setMessage] = useState('');
   const router = useRouter();
 
-  const handleLogin = async () => {
-  try {
-    const res = await api.post('/api/admin-login/', { email, password });
+  // Create axios instance with credentials enabled
+  const api = axios.create({
+    baseURL: 'http://127.0.0.1:8000/api/',
+    withCredentials: true, // IMPORTANT: send cookies for session auth
+  });
 
-    // Check for success and message
-    if (res.status === 200 && res.data?.message) {
-      setMessage(res.data.message);
-      router.push('/admin/dashboard');
-    } else {
-      setMessage('Unexpected response');
+  const handleLogin = async () => {
+    try {
+      const res = await api.post('admin-login/', { email, password });
+
+      if (res.status === 200 && res.data?.message) {
+        setMessage(res.data.message);
+        router.push('/admin/dashboard'); // redirect after login
+      } else {
+        setMessage('Unexpected response');
+      }
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Login failed');
     }
-  } catch (err) {
-    setMessage(err.response?.data?.error || 'Login failed');
-  }
-};
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-200">
@@ -36,11 +41,10 @@ export default function AdminLoginForm() {
           <div className="w-16 h-16 rounded-full overflow-hidden mb-2 flex items-center justify-center bg-white">
             <img
               src="/admin-photo.jpg"
-              alt="Chill Cat"
+              alt="Admin"
               className="w-full h-full object-cover block"
             />
           </div>
-
 
           <h2 className="text-xl font-bold text-gray-800">Hello!</h2>
           <p className="text-sm text-gray-500">Welcome Admin</p>
@@ -52,6 +56,7 @@ export default function AdminLoginForm() {
         <input
           type="email"
           placeholder="Email"
+          value={email}
           onChange={e => setEmail(e.target.value)}
           className="w-full px-4 py-2 mb-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
@@ -59,6 +64,7 @@ export default function AdminLoginForm() {
         <input
           type="password"
           placeholder="Password"
+          value={password}
           onChange={e => setPassword(e.target.value)}
           className="w-full px-4 py-2 mb-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
@@ -88,3 +94,6 @@ export default function AdminLoginForm() {
     </div>
   );
 }
+
+
+

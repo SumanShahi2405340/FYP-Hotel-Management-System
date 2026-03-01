@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
 from rest_framework.views import APIView
+from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework import status, generics
 from rest_framework.generics import ListAPIView, UpdateAPIView
@@ -14,13 +15,22 @@ from rest_framework.decorators import api_view
 from .models import Hotel, CommissionRule, CommissionPayment
 from .models import SendAdminAnnouncement, SendOwnerAnnouncement, SendReceptionistAnnouncement
 from .models import OwnerStarredNotification
-from .models import RoomInventory, RoomPrice, ManageMaintenanceRequest, Receptionist
+from .models import RoomInventory, RoomPrice, ManageMaintenanceRequest, Receptionist, Promotion
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import permission_classes
 from rest_framework.decorators import api_view
 from django.contrib.auth.hashers import make_password
 import random, string
+from django.contrib.auth import authenticate, login, get_user_model
 # from rest_framework_simplejwt.tokens import RefreshToken
+
+# views.py
+from rest_framework import generics, permissions
+from rest_framework.exceptions import PermissionDenied
+from .models import CommissionReport
+
+
+
 
 
 
@@ -43,9 +53,10 @@ from .serializers import (
     RoomPriceSerializer,
     ManageMaintenanceRequestSerializer,
     ReceptionistSerializer,
+    PromotionSerializer,
+    CommissionReportSerializer
 
 )
-
 
 
 
@@ -56,30 +67,31 @@ class HotelViewSet(ModelViewSet):
 
 
 # AUTHENTICATION + OTP VIEWS
-# Step 1: Normal login with email + password
+User = get_user_model()
+
 class AdminLoginView(APIView):
     def post(self, request):
-        serializer = AdminLoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        email = request.data.get("email")
+        password = request.data.get("password")
 
-        email = serializer.validated_data['email']
-        password = serializer.validated_data['password']
-
-        # Allow duplicate emails: pick the first match
+        # Find all users with this email
         users = User.objects.filter(email=email)
         if not users.exists():
             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Pick the first match (graceful handling of duplicates)
         user = users.first()
 
-        # Authenticate using username (Django default)
+        # Authenticate using username (default Django backend)
         user = authenticate(request, username=user.username, password=password)
 
-        if user is not None:
-            login(request, user)
+        if user is not None and user.is_staff:
+            login(request, user)  # session cookie set
             return Response({'message': 'Login successful'}, status=status.HTTP_200_OK)
 
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
 
 
 # Step 2: Forgot password → send OTP
@@ -543,6 +555,19 @@ def recent_announcements(request):
     return Response(combined)
 
 
+
+
+
+
+
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from .models import SendAdminAnnouncement, SendReceptionistAnnouncement, SendOwnerAnnouncement, Hotel
+from .serializers import SendOwnerAnnouncementSerializer
+
+# POST: Owner sends announcement
 @api_view(['POST'])
 def owner_send_announcement(request):
     message = request.data.get('message')
@@ -557,42 +582,62 @@ def owner_send_announcement(request):
 
     # Save to Admin table if checkbox is true
     if send_to_admin:
-        admin_announcement = SendAdminAnnouncement.objects.create(message=message)
-        saved['admin'] = {"id": admin_announcement.id, "message": admin_announcement.message}
+        admin_announcement = SendAdminAnnouncement.objects.create(
+            hotel=getattr(request.user, "hotel", None),
+            message=message
+        )
+        saved['admin'] = {
+            "id": admin_announcement.id,
+            "message": admin_announcement.message,
+            "hotel_name": admin_announcement.hotel.name if admin_announcement.hotel else None,
+            "created_at": admin_announcement.created_at
+        }
 
     # Save to Receptionist table if checkbox is true
     if send_to_receptionist:
-        receptionist_announcement = SendReceptionistAnnouncement.objects.create(message=message)
-        saved['receptionist'] = {"id": receptionist_announcement.id, "message": receptionist_announcement.message}
+        receptionist_announcement = SendReceptionistAnnouncement.objects.create(
+            hotel=getattr(request.user, "hotel", None),
+            message=message
+        )
+        saved['receptionist'] = {
+            "id": receptionist_announcement.id,
+            "message": receptionist_announcement.message,
+            "hotel_name": receptionist_announcement.hotel.name if receptionist_announcement.hotel else None,
+            "created_at": receptionist_announcement.created_at
+        }
 
     return Response({'success': True, 'saved': saved}, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])
 def owner_recent_announcements(request):
-    admin = SendAdminAnnouncement.objects.order_by('-created_at')[:5]
-    receptionist = SendReceptionistAnnouncement.objects.order_by('-created_at')[:5]
-
     combined = []
 
+    # Admin announcements
+    admin = SendAdminAnnouncement.objects.order_by('-created_at')[:5]
     for ann in admin:
         combined.append({
             "id": ann.id,
             "content": ann.message,
             "recipients": ["admin"],
+            "hotel_name": ann.hotel.name if ann.hotel else None,
             "timestamp": ann.created_at
         })
 
+    # Receptionist announcements
+    receptionist = SendReceptionistAnnouncement.objects.order_by('-created_at')[:5]
     for ann in receptionist:
         combined.append({
             "id": ann.id,
             "content": ann.message,
             "recipients": ["receptionist"],
+            "hotel_name": ann.hotel.name if ann.hotel else None,
             "timestamp": ann.created_at
         })
 
     combined.sort(key=lambda x: x['timestamp'], reverse=True)
     return Response(combined)
+
 
 
 
@@ -708,3 +753,45 @@ class ManageMaintenanceRequestListCreateView(generics.ListCreateAPIView):
 class ManageMaintenanceRequestDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = ManageMaintenanceRequest.objects.all()
     serializer_class = ManageMaintenanceRequestSerializer
+
+
+# List and Create promotions for the logged-in hotel
+from rest_framework import generics
+from .models import Promotion
+from .serializers import PromotionSerializer
+
+class PromotionListCreateView(generics.ListCreateAPIView):
+    serializer_class = PromotionSerializer
+
+    def get_queryset(self):
+        # Only promotions for the logged-in user's hotel
+        return Promotion.objects.filter(hotel=self.request.user.hotel)
+
+    def perform_create(self, serializer):
+        serializer.save(hotel=self.request.user.hotel)
+
+
+# Retrieve, Update, Delete a single promotion for the logged-in hotel
+class PromotionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = PromotionSerializer
+
+    def get_queryset(self):
+        return Promotion.objects.filter(hotel=self.request.user.hotel)
+
+
+
+class CommissionReportListCreateView(generics.ListCreateAPIView):
+    serializer_class = CommissionReportSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not hasattr(user, "hotel") or user.hotel is None:
+            return CommissionReport.objects.none()
+        return CommissionReport.objects.filter(hotel=user.hotel)
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if not hasattr(user, "hotel") or user.hotel is None:
+            raise PermissionDenied("User is not linked to a hotel.")
+        serializer.save(hotel=user.hotel)

@@ -50,6 +50,9 @@ from .views import (
     ManageMaintenanceRequestDetailView,
     register_receptionist,
     get_hotel_receptionists,
+    PromotionListCreateView,
+    PromotionDetailView,
+    CommissionReportListCreateView,
 
   
 )
@@ -59,6 +62,7 @@ from .views import (
 # Router for DRF ViewSets
 router = DefaultRouter()
 router.register(r'hotels', HotelViewSet)
+
 
 urlpatterns = [
     # Authentication endpoints
@@ -122,8 +126,12 @@ urlpatterns = [
     path("receptionist/register/", register_receptionist, name="register_receptionist"),
     path("hotel/receptionists/", get_hotel_receptionists, name="get_hotel_receptionists"),
 
+    # Promotion endpoints
+    path("promotions/", PromotionListCreateView.as_view(), name="promotion-list-create"),
+    path("promotions/<int:pk>/", PromotionDetailView.as_view(), name="promotion-detail"),
 
-  
+    path("commission-reports/", CommissionReportListCreateView.as_view(), name="commission-reports"),
+
 
     # Include router URLs (for HotelViewSet)
     path('', include(router.urls)),

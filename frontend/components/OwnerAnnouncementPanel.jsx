@@ -12,7 +12,10 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
     if (isOpen) {
       fetch("http://localhost:8000/api/owner-recent-announcements/")
         .then(res => res.json())
-        .then(data => setAnnouncements(data))
+        .then(data => {
+          const items = Array.isArray(data) ? data : data.results || [];
+          setAnnouncements(items);
+        })
         .catch(err => console.error("Error fetching announcements:", err));
     }
   }, [isOpen]);
@@ -37,14 +40,14 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
 
       if (response.ok) {
         const saved = [];
-        if (data.saved.admin) {
+        if (data.saved?.admin) {
           saved.push({
             content: data.saved.admin.message,
             recipients: ["admin"],
             timestamp: data.saved.admin.created_at,
           });
         }
-        if (data.saved.receptionist) {
+        if (data.saved?.receptionist) {
           saved.push({
             content: data.saved.receptionist.message,
             recipients: ["receptionist"],
@@ -125,18 +128,21 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
             Recent Owner Announcements
           </h3>
           <ul className="space-y-2">
-            {announcements.map((a, idx) => (
-              <li
-                key={idx}
-                className="bg-gray-100 p-3 rounded-lg text-sm text-gray-800"
-              >
-                <div className="mb-1">{a.content}</div>
-                <div className="text-xs text-gray-500">
-                  Sent to: {a.recipients.join(', ') || 'None'} From Owner •{' '} 
-                  {new Date(a.timestamp).toLocaleString()}
-                </div>
-              </li>
-            ))}
+            {Array.isArray(announcements) &&
+              announcements.map((a, idx) => (
+                <li
+                  key={idx}
+                  className="bg-gray-100 p-3 rounded-lg text-sm text-gray-800"
+                >
+                  <div className="mb-1">{a.content}</div>
+                  <div className="text-xs text-gray-500">
+                    Sent to: {a.recipients?.join(', ') || 'None'} • 
+                    From Owner of ({a.hotel_name}) •{" "}
+                    {a.timestamp ? new Date(a.timestamp).toLocaleString() : ""}
+                  </div>
+
+                </li>
+              ))}
           </ul>
         </div>
       </div>

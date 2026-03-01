@@ -3,7 +3,10 @@ from .models import Hotel
 from .models import CommissionRule, CommissionPayment
 from .models import SendOwnerAnnouncement, SendReceptionistAnnouncement, SendAdminAnnouncement
 from .models import OwnerStarredNotification
-from .models import RoomInventory,RoomPrice,ManageMaintenanceRequest, Receptionist
+from .models import RoomInventory,RoomPrice,ManageMaintenanceRequest, Receptionist, Promotion, CommissionReport
+
+
+
 
 
 # from django.contrib.auth import authenticate
@@ -46,6 +49,14 @@ class AdminLoginSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     password = serializers.CharField(required=True, write_only=True)
 
+    def validate_email(self, value):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("No user with this email")
+        return value
+
+
 
 class OTPRequestSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
@@ -85,19 +96,22 @@ class CommissionRevenueSerializer(serializers.ModelSerializer):
 
 #Send Announcement to OwnerSerializer
 class SendOwnerAnnouncementSerializer(serializers.ModelSerializer):
+    hotel_name = serializers.CharField(source="owner.hotel.name", read_only=True)
+
     class Meta:
         model = SendOwnerAnnouncement
         fields = '__all__'
 
-
-#Send Announcement to ManagerSerializer
+#Send Announcement to Receptionist Serializer
 class SendReceptionistAnnouncementSerializer(serializers.ModelSerializer):
+    hotel_name = serializers.CharField(source="owner.hotel.name", read_only=True)
     class Meta:
         model = SendReceptionistAnnouncement
         fields = '__all__'
 
 #Send Announcement to AdminSerializer
 class SendAdminAnnouncementSerializer(serializers.ModelSerializer):
+    hotel_name = serializers.CharField(source="owner.hotel.name", read_only=True)
     class Meta:
         model = SendAdminAnnouncement
         fields = '__all__'
@@ -154,3 +168,18 @@ class ReceptionistSerializer(serializers.ModelSerializer):
         model = Receptionist
         fields = "__all__"
         read_only_fields = ["user"]  # user account is created separately
+
+
+# NEW: Promotion Serializer
+class PromotionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Promotion
+        fields = "__all__"
+
+
+# serializers.py
+class CommissionReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CommissionReport
+        fields = "__all__"
+        read_only_fields = ["hotel", "created_at"]

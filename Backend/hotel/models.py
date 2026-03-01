@@ -1,7 +1,6 @@
 from django.db import models
-from django.contrib.auth.models import User 
-from django.utils import timezone 
-
+from django.contrib.auth.models import User
+from django.utils import timezone
 
 # HOTEL MODEL
 class Hotel(models.Model):
@@ -17,34 +16,34 @@ class Hotel(models.Model):
     location = models.CharField(max_length=255)
     pan = models.CharField(max_length=100)
 
-    # NEW FIELDS
+    # Extra fields
     age = models.IntegerField(null=True, blank=True)
     owner_contact = models.CharField(max_length=20, null=True, blank=True)
     citizenship = models.CharField(max_length=50, null=True, blank=True)
     permanent_address = models.CharField(max_length=255, null=True, blank=True)
 
-    # Replace is_active with status field
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Active")
-    registered_on = models.DateField(default=timezone.now) #added logic for confirm comission payments
+    registered_on = models.DateField(default=timezone.now)
 
     review_score = models.DecimalField(max_digits=3, decimal_places=1, default=0.0)
     usage_score = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # link hotel to user for each hotel to have separte pannel 
+    # link hotel to user
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="hotel", null=True, blank=True)
 
     def __str__(self):
         return self.name
-    
 
+
+# RECEPTIONIST MODEL
 class Receptionist(models.Model):
     STATUS_CHOICES = [
         ("Active", "Active"),
         ("Inactive", "Inactive"),
     ]
 
-    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="receptionists", null=True, blank=True)  # link to hotel
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="receptionists", null=True, blank=True)
     name = models.CharField(max_length=255)
     age = models.PositiveIntegerField(null=True, blank=True)
     email = models.EmailField(unique=True)
@@ -58,8 +57,6 @@ class Receptionist(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.email})"
-
-
 
 
 # COMMISSION RULE MODEL
@@ -76,52 +73,52 @@ class CommissionRule(models.Model):
 # COMMISSION PAYMENT MODEL
 class CommissionPayment(models.Model):
     hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="payments")
-    payment_id = models.CharField(max_length=20)  # e.g. PID-32
-    amount = models.CharField(max_length=20)      # e.g. NPR 8,000
-    status = models.CharField(max_length=20)      # Pending / Paid
-    start_due_date = models.CharField(max_length=20)  # e.g. 2025-12-15/25
+    payment_id = models.CharField(max_length=20)
+    amount = models.CharField(max_length=20)
+    status = models.CharField(max_length=20)
+    start_due_date = models.CharField(max_length=20)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.payment_id} - {self.hotel.name} - {self.status}"
 
 
-
-# Announcement Model for Admin
+# ANNOUNCEMENTS
 class SendAdminAnnouncement(models.Model):
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="admin_announcements", null=True, blank=True)
     message = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"SendAdminAnnouncement({self.message[:30]})"
-    
+        return f"AdminAnnouncement({self.message[:30]})"
 
-# Announcement Model for Owner
+
 class SendOwnerAnnouncement(models.Model):
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="owner_announcements",null=True, blank=True)
     message = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"SendOwnerAnnouncement({self.message[:30]})"
+        return f"OwnerAnnouncement({self.hotel.name}: {self.message[:30]})"
 
-# Announcement Model for Receptionist
+
 class SendReceptionistAnnouncement(models.Model):
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="receptionist_announcements", null=True, blank=True)
     message = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"SendReceptionistAnnouncement({self.message[:30]})"
 
+    def __str__(self):
+        return f"ReceptionistAnnouncement({self.message[:30]})"
 
 
 class OwnerStarredNotification(models.Model):
-    # user is now optional, so you can store stars without requiring login
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     announcement = models.ForeignKey(SendOwnerAnnouncement, on_delete=models.CASCADE)
     starred_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'announcement')  # still prevents duplicates if user is set
+        unique_together = ('user', 'announcement')
 
     def __str__(self):
         if self.user:
@@ -137,7 +134,7 @@ class RoomInventory(models.Model):
     suite_rooms = models.IntegerField(default=0)
 
     def __str__(self):
-        return f"Inventory: N={self.normal_rooms}, D={self.deluxe_rooms}, S={self.suite_rooms}"
+        return f"Inventory for {self.hotel.name}"
 
 
 # ROOM PRICE MODEL
@@ -151,7 +148,7 @@ class RoomPrice(models.Model):
         return f"Prices for {self.hotel.name}"
 
 
-# Manage Maintenance Requests Model
+# MAINTENANCE REQUEST MODEL
 class ManageMaintenanceRequest(models.Model):
     STATUS_CHOICES = [
         ("Pending", "Pending"),
@@ -168,5 +165,35 @@ class ManageMaintenanceRequest(models.Model):
 
     def __str__(self):
         return f"{self.room} - {self.issue} ({self.status})"
-    
 
+
+# PROMOTION MODEL
+class Promotion(models.Model):
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="promotions")
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    valid_from = models.DateField()
+    valid_to = models.DateField()
+    status = models.CharField(max_length=20, default="Upcoming")
+
+    def __str__(self):
+        return f"{self.title} ({self.hotel.name})"
+
+
+
+# models.py
+class CommissionReport(models.Model):
+    STATUS_CHOICES = [
+        ("Pending", "Pending"),
+        ("Paid", "Paid"),
+    ]
+
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="commission_reports")
+    date = models.DateField()
+    time = models.TimeField()
+    rate = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Pending")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.date} {self.time} - {self.rate} ({self.status})"
