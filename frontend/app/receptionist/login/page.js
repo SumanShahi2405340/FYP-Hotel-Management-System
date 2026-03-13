@@ -1,7 +1,7 @@
-import ManagerLoginForm from '@/components/ManagerLoginForm';
+import ReceptionistLoginForm from '@/components/ReceptionistLoginForm';
 
-export default function ManagerLoginPage() {
-  return <ManagerLoginForm />;
+export default function ReceptionistLoginPage() {
+  return <ReceptionistLoginForm />;
 }
 
 

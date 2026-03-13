@@ -8,29 +8,32 @@ export default function OwnerLoginForm() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [status, setStatus] = useState(""); // success or error
   const router = useRouter();
 
   const handleLogin = async () => {
     try {
-      // call backend login endpoint
-      // const res = await api.post('http://127.0.0.1:8000/api/owner/login/', { username, password });
       const res = await api.post('http://127.0.0.1:8000/api/token/', { username, password });
 
       if (res.status === 200) {
         // Save JWT token + hotel info
-        localStorage.setItem("authToken", res.data.access);   // JWT access token
-        localStorage.setItem("refreshToken", res.data.refresh); // optional
-        localStorage.setItem("hotelId", res.data.hotel_id);   // optional, for routing or display
+        localStorage.setItem("authToken", res.data.access);
+        localStorage.setItem("refreshToken", res.data.refresh);
+        localStorage.setItem("hotelId", res.data.hotel_id);
 
         setMessage(res.data.message || 'Login successful');
-        // inspaect/application/localstorage for token
+        setStatus('success');
+
         console.log("Login response:", res.data);
 
-        // Redirect to generic dashboard (no ID in URL)
-        router.push("/owner/owner-dashboard");
+        // Delay redirect by 1.5 seconds
+        setTimeout(() => {
+          router.push("/owner/owner-dashboard");
+        }, 1500);
       }
     } catch (err) {
       setMessage(err.response?.data?.error || 'Login failed');
+      setStatus('error');
     }
   };
 
@@ -78,7 +81,11 @@ export default function OwnerLoginForm() {
         </button>
 
         {message && (
-          <p className="mt-4 text-center text-sm text-red-500">
+          <p
+            className={`mt-4 text-center text-sm ${
+              status === 'success' ? 'text-green-500' : 'text-red-500'
+            }`}
+          >
             {message}
           </p>
         )}

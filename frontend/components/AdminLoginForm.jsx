@@ -23,7 +23,11 @@ export default function AdminLoginForm() {
 
       if (res.status === 200 && res.data?.message) {
         setMessage(res.data.message);
-        router.push('/admin/dashboard'); // redirect after login
+        
+      // Delay redirect by 1.5 seconds
+      setTimeout(() => {
+        router.push('/admin/dashboard');// redirect after login
+      }, 1500);
       } else {
         setMessage('Unexpected response');
       }

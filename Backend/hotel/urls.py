@@ -49,19 +49,25 @@ from .views import (
     ManageMaintenanceRequestListCreateView,
     ManageMaintenanceRequestDetailView,
     register_receptionist,
-    get_hotel_receptionists,
+    get_hotel_receptionist,
+    get_hotel_receptionist_info,
+    get_hotel_staff_info, 
+    add_staff,
+    delete_staff,
     PromotionListCreateView,
     PromotionDetailView,
     CommissionReportListCreateView,
-
+    ManageBookingsViewSet, 
+    AttendanceViewSet,  
+      
   
 )
-
-
 
 # Router for DRF ViewSets
 router = DefaultRouter()
 router.register(r'hotels', HotelViewSet)
+router.register(r'manage-bookings', ManageBookingsViewSet)
+router.register(r'attendance', AttendanceViewSet, basename='attendance')
 
 
 urlpatterns = [
@@ -124,7 +130,17 @@ urlpatterns = [
     path("requests/<int:pk>/", ManageMaintenanceRequestDetailView.as_view(), name="request_detail"),
 
     path("receptionist/register/", register_receptionist, name="register_receptionist"),
-    path("hotel/receptionists/", get_hotel_receptionists, name="get_hotel_receptionists"),
+    path("hotel/receptionist/", get_hotel_receptionist, name="get_hotel_receptionist"),
+    path("hotel/receptionist-info/", get_hotel_receptionist_info, name="get_hotel_receptionist_info_managestaffnattedance"),
+
+
+    path("hotel/staff-info/", get_hotel_staff_info, name="get_hotel_staff_info_managestaffnnattendance"),
+    path("hotel/add-staff/", add_staff, name="add_staff"),
+    path("staff/<int:pk>/delete/", delete_staff, name="delete_staff"),
+
+
+
+
 
     # Promotion endpoints
     path("promotions/", PromotionListCreateView.as_view(), name="promotion-list-create"),
@@ -133,10 +149,17 @@ urlpatterns = [
     path("commission-reports/", CommissionReportListCreateView.as_view(), name="commission-reports"),
 
 
-    # Include router URLs (for HotelViewSet)
+
+    # Include router URLs (for HotelViewSet+ ManageBookingsViewSet)
     path('', include(router.urls)),
 
    
 
-
 ]
+
+
+
+
+
+
+

@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
+# from hotel.models import Staff   
 
 # HOTEL MODEL
 class Hotel(models.Model):
@@ -43,20 +44,81 @@ class Receptionist(models.Model):
         ("Inactive", "Inactive"),
     ]
 
+    ROLE_CHOICES = [
+        ("Receptionist", "Receptionist"),
+    ]
+
     hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="receptionists", null=True, blank=True)
     name = models.CharField(max_length=255)
     age = models.PositiveIntegerField(null=True, blank=True)
-    email = models.EmailField(unique=True)
+    email = models.EmailField()
     contact = models.CharField(max_length=20)
     permanent_address = models.CharField(max_length=255, null=True, blank=True)
     citizenship = models.CharField(max_length=50, null=True, blank=True)
     joined_date = models.DateField(default=timezone.now)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Active")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="Receptionist")   #  new field
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="receptionist", null=True, blank=True)
 
     def __str__(self):
         return f"{self.name} ({self.email})"
+
+
+
+#Staff Model
+class Staff(models.Model):
+    STATUS_CHOICES = [
+        ("Active", "Active"),
+        ("Inactive", "Inactive"),
+    ]
+
+    hotel = models.ForeignKey("hotel.Hotel", on_delete=models.CASCADE, related_name="staff")
+    name = models.CharField(max_length=255)
+    age = models.PositiveIntegerField(null=True, blank=True)
+    email = models.EmailField(unique=True)
+    contact = models.CharField(max_length=20)
+    permanent_address = models.CharField(max_length=255, null=True, blank=True)
+    citizenship = models.CharField(max_length=50, null=True, blank=True, unique=True)
+    joined_date = models.DateField(default=timezone.now)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Active")
+    role = models.CharField(max_length=50, default="Staff")
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="staff",
+        null=True,
+        blank=True
+    )
+
+
+    def __str__(self):
+        return f"{self.name} ({self.email})"
+    
+
+# attendance models.py
+class Attendance(models.Model):
+    STATUS_CHOICES = [
+        ("Present", "Present"),
+        ("Absent", "Absent"),
+    ]
+
+    staff = models.ForeignKey(Staff, on_delete=models.CASCADE, null=True, blank=True, related_name="attendance")
+    receptionist = models.ForeignKey(Receptionist, on_delete=models.CASCADE, null=True, blank=True, related_name="attendance")
+    date = models.DateField(default=timezone.now)
+    status = models.CharField(max_length=10, choices=[("Present","Present"),("Absent","Absent")])
+
+    def __str__(self):
+        if self.staff:
+            return f"{self.staff.name} - {self.date} ({self.status})"
+        elif self.receptionist:
+            return f"{self.receptionist.name} - {self.date} ({self.status})"
+        return f"Unknown - {self.date} ({self.status})"
+
+
+
+
 
 
 # COMMISSION RULE MODEL
@@ -197,3 +259,17 @@ class CommissionReport(models.Model):
 
     def __str__(self):
         return f"{self.date} {self.time} - {self.rate} ({self.status})"
+
+
+
+
+class ManageBookings(models.Model):
+    name = models.CharField(max_length=100)
+    email = models.EmailField()
+    contact = models.CharField(max_length=20)
+    room = models.CharField(max_length=50)
+    days = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.name} - {self.room}"

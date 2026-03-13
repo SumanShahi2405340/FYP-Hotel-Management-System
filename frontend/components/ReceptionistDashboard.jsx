@@ -1,30 +1,53 @@
-'use client';
-import React, { useState } from "react";
+"use client";
+import React, { useState, useEffect } from "react";
 import { FaCog } from "react-icons/fa";
+import { useRouter } from "next/navigation";
 import FourButtons from "@/components/FourButtons";
+import recepApi from "@/utils/recep";   //  import axios instance
 
 export default function ReceptionistDashboard() {
   const [menuOpen, setMenuOpen] = useState(true);
   const [showLogoutPopup, setShowLogoutPopup] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
+  const [hotel, setHotel] = useState(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    const fetchHotelInfo = async () => {
+      try {
+        const res = await recepApi.get("/api/hotel/receptionist/");     
+        // ("/api/hotel/receptionist/{id}/");
+        if (res.status === 200) {
+          setHotel({ hotel_id: res.data.hotel_id, hotel_name: res.data.hotel_name });
+        }
+      } catch (err) {
+        console.error("Failed to fetch hotel info", err);
+      }
+    };
+
+    fetchHotelInfo();
+  }, []);
 
   return (
     <div className="min-h-screen flex">
       {/* Sidebar */}
       {menuOpen && (
-        <div
-          className={`fixed top-0 left-0 h-screen w-72
-            bg-gradient-to-b from-indigo-900/90 via-gray-900/80 to-black/70
-            backdrop-blur-md text-white flex flex-col justify-start p-6 z-20
-            transform transition-transform duration-300 shadow-2xl
-            border-r border-gray-700/40`}
-        >
-          {/* Receptionist Profile */}
+        <div className="fixed top-0 left-0 h-screen w-72 bg-gradient-to-b from-indigo-900/90 via-gray-900/80 to-black/70 backdrop-blur-md text-white flex flex-col justify-start p-6 z-20 shadow-2xl border-r border-gray-700/40">
+          
+          {/* Hotel Profile */}
           <div className="flex flex-col items-center mb-4">
-            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-600 shadow">
-              <img src="/admindash1.jpg" alt="Receptionist Profile" className="w-full h-full object-cover" />
-            </div>
-            <span className="mt-2 text-sm font-medium text-green-400">Receptionist Panel</span>
+            <button
+              onClick={() => hotel && router.push(`/owner/hotel-profile/${hotel.hotel_id}`)}
+              className="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-600 shadow hover:shadow-lg transition"
+            >
+              <img src="/admindash1.jpg" alt="Hotel Profile" className="w-full h-full object-cover" />
+            </button>
+            {hotel && (
+              <>
+                <span className="mt-2 text-sm font-medium text-red-700">Hotel ID: {hotel.hotel_id}</span>
+                <span className="mt-1 text-sm font-medium text-green-400">{hotel.hotel_name}</span>
+              </>
+            )}
           </div>
 
           <div className="flex justify-center mb-4">
@@ -33,19 +56,23 @@ export default function ReceptionistDashboard() {
             </h2>
           </div>
 
+
           {/* Sidebar buttons */}
-          <button className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
-            Manage Reservations
-          </button>
-          <button className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
-            Guest Requests
-          </button>
-          <button className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
-            Room Availability
-          </button>
-          <button className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
-            Announcements
-          </button>
+            <button
+              onClick={() => router.push("/receptionist/manage-staffnnattendance")}
+              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
+            >
+              <span className="text-white font-bold">Manage Staff & Attendance</span>
+            </button>
+
+
+            <button
+              onClick={() => router.push("/receptionist/send-view-maintenancerequests")}
+              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
+            >
+              <span className="text-white font-bold">Send Maintenance Requests</span>
+            </button>
+
 
           {/* Settings */}
           <button
@@ -61,6 +88,13 @@ export default function ReceptionistDashboard() {
               <button className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
                 Notifications & Setting
               </button>
+              
+              <button
+              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
+            >
+              View Promotion/Discount in N&S
+            </button>
+            
             </div>
           )}
 
@@ -96,12 +130,11 @@ export default function ReceptionistDashboard() {
               {menuOpen ? "Hide Menu" : "Show Menu"}
             </button>
           </div>
-        {/* Transparent Container */}
-        <div className="bg-white/10 backdrop-blur-md rounded-lg shadow-lg p-4 max-w-4xl mx-auto">
+          <div className="bg-white/10 backdrop-blur-md rounded-lg shadow-lg p-4 max-w-4xl mx-auto">
             <h1 className="text-3xl font-bold text-green-400 drop-shadow-lg text-center">
-                Receptionist Dashboard
-            </h1>   
-        </div>  
+              Receptionist Dashboard
+            </h1>
+          </div>
           <div className="flex justify-end">
             <div className="relative inline-block">
               <button className="text-4xl text-purple-600 hover:text-purple-700 transition">
@@ -113,7 +146,7 @@ export default function ReceptionistDashboard() {
             </div>
           </div>
         </div>
-        
+
         {/* Top buttons and panels */}
         <FourButtons />
       </div>
@@ -125,7 +158,12 @@ export default function ReceptionistDashboard() {
             <h2 className="text-lg font-semibold mb-4">Do you really want to logout?</h2>
             <div className="flex justify-center gap-4">
               <button
-                onClick={() => setShowLogoutPopup(false)}
+                onClick={() => {
+                  localStorage.removeItem("recepToken");
+                  localStorage.removeItem("recepRefreshToken");
+                  setShowLogoutPopup(false);
+                  router.push("http://localhost:3000/role");
+                }}
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
               >
                 Yes
@@ -143,13 +181,3 @@ export default function ReceptionistDashboard() {
     </div>
   );
 }
-
-
-
-
- 
-
-
-
-
-

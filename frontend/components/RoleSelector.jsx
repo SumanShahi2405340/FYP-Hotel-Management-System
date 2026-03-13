@@ -14,7 +14,7 @@ export default function RoleSelector() {
 
     if (value === 'admin') router.push('/admin/login');
     if (value === 'owner') router.push('/owner/login');
-    if (value === 'manager') router.push('/manager/login');
+    if (value === 'receptionist') router.push('/receptionist/login');
   };
 
   return (
@@ -25,11 +25,10 @@ export default function RoleSelector() {
       {/* Overlay */}
       <div className="absolute inset-0 bg-black/40 z-0"></div>
 
-      {/* (1) Top Navbar */}
+      {/* Top Navbar */}
       <div className="relative z-10 flex items-center justify-between px-6 py-2 bg-white/80 backdrop-blur-md shadow-md">
         {/* Logo + Navigation */}
         <div className="flex items-center space-x-6">
-          {/* (2) Centered Logo */}
           <div className="flex items-center h-full">
             <Image
               src="/cloudinn.png"
@@ -72,12 +71,12 @@ export default function RoleSelector() {
             <option value="">Select Role</option>
             <option value="admin">Admin</option>
             <option value="owner">Owner</option>
-            <option value="manager">Manager</option>
+            <option value="receptionist">Receptionist</option>
           </select>
         </div>
       </div>
 
-      {/* (3) Bottom Navbar */}
+      {/* Bottom Navbar */}
       <div className="relative z-10 flex justify-center items-center px-6 py-2 bg-white/80 backdrop-blur-md shadow-md">
         <p className="text-sm text-gray-700">© 2025 CloudInn. All rights reserved.</p>
       </div>

@@ -191,52 +191,77 @@ return (
     </div>
 
 
-      {/* Main Content */}
-      <div className={`transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'} p-6 relative z-10`}>
+{/* Main Content */}
+<div className={`transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'} p-6 relative z-10`}>
 
-        {/* Top Bar */}
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-8">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="bg-gradient-to-r from-gray-700/80 to-gray-900/80 text-white px-3 py-1 rounded shadow hover:from-gray-600/80 hover:to-gray-800/80 transition">
-              {sidebarOpen ? 'Hide Menu' : 'Show Menu'}
-            </button>
-            <h1 className="text-3xl font-bold text-white drop-shadow-lg text-center mb-1">Admin Dashboard</h1>
-          </div>
-        </div>
+  {/* Top Bar */}
+  <div className="flex justify-between items-center mb-6">
+    {/* Left side toggle */}
+    <button 
+      onClick={() => setSidebarOpen(!sidebarOpen)} 
+      className="bg-gradient-to-r from-gray-700/80 to-gray-900/80 text-white px-3 py-1 rounded shadow hover:from-gray-600/80 hover:to-gray-800/80 transition"
+    >
+      {sidebarOpen ? 'Hide Menu' : 'Show Menu'}
+    </button>
 
-        {/* Notification + Register Buttons */}
-        <div className="absolute top-4 right-4 flex items-center gap-5 z-30">
-          <button
-            onClick={() => router.push('/admin/notification-setting')}
-            className="relative -mt-5 text-4xl text-purple-600 hover:text-purple-700 transition">
-            🔔
-          </button>
+    {/* Admin Dashboard heading at same level */}
+      <div className="bg-white/10 backdrop-blur-md rounded-lg shadow-lg p-4">
+        <h1 className="text-3xl font-bold text-green-400 drop-shadow-lg">
+          Admin Dashboard
+        </h1>
+      </div>
 
-          <div className="flex flex-col items-center">
-            <button
-              onClick={() => router.push('/admin/register-hotel')}
-              className="bg-green-500 hover:bg-green-600 text-white w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold shadow-lg"
-            >
-              +
-            </button>
-            <span className="text-sm font-semibold mt-1 text-white drop-shadow">
-              Register Hotel
-            </span>
-          </div>
-        </div>
+    {/* Right side: Bell + Register + Admin Dashboard all aligned */}
+    <div className="flex items-center gap-6">
+      {/* Bell */}
+      <button
+        onClick={() => router.push('/admin/notification-setting')}
+        className="text-4xl text-purple-600 hover:text-purple-700 transition">
+        🔔
+      </button>
 
-        {/* View Toggle Buttons */}
-        <div className="flex justify-center gap-3 mb-6 flex-wrap mt-12">
-          <button onClick={() => { setView('all'); fetchHotels('all'); }} className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'all' ? 'bg-blue-600' : 'bg-blue-500 hover:bg-blue-600'} text-white`}>
-            All Hotels
-          </button>
-          <button onClick={() => { setView('active'); fetchHotels('active'); }} className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'active' ? 'bg-green-600' : 'bg-green-500 hover:bg-green-600'} text-white`}>
-            Active Hotels
-          </button>
-          <button onClick={() => { setView('inactive'); fetchHotels('inactive'); }} className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'inactive' ? 'bg-red-600' : 'bg-red-500 hover:bg-red-600'} text-white`}>
-            Inactive Hotels
-          </button>
-        </div>
+      {/* Register */}
+      <div className="flex flex-col items-center">
+        <button
+          onClick={() => router.push('/admin/register-hotel')}
+          className="bg-green-500 hover:bg-green-600 text-white w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold shadow-lg"
+        >
+          +
+        </button>
+        <span className="text-sm font-semibold mt-1 text-white drop-shadow">
+          Register Hotel
+        </span>
+      </div>
+    </div>
+  </div>
+
+  {/* View Toggle Buttons directly below heading */}
+  <div className="flex justify-center gap-14 mb-4 flex-wrap ml-1">
+    <button 
+      onClick={() => { setView('all'); fetchHotels('all'); }} 
+      className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'all' ? 'bg-blue-600' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+    >
+      All Hotels
+    </button>
+
+    <button 
+      onClick={() => { setView('inactive'); fetchHotels('inactive'); }} 
+      className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'inactive' ? 'bg-red-600' : 'bg-red-500 hover:bg-red-600'} text-white`}
+    >
+      Inactive Hotels
+    </button>
+
+    <button 
+      onClick={() => { setView('active'); fetchHotels('active'); }} 
+      className={`px-4 py-1 rounded-full text-sm font-medium shadow-md transition-transform hover:scale-105 ${view === 'active' ? 'bg-green-600' : 'bg-green-500 hover:bg-green-600'} text-white`}
+    >
+      Active Hotels
+    </button>
+    
+  </div>
+
+
+
 
      
           <div className="bg-white/80 p-6 rounded-2xl shadow-2xl overflow-x-auto border border-gray-200">
