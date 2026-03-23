@@ -2,21 +2,21 @@
 import React, { useState, useEffect } from "react";
 import { FaCog } from "react-icons/fa";
 import { useRouter } from "next/navigation";
-import FourButtons from "@/components/FourButtons";
-import recepApi from "@/utils/recep";   //  import axios instance
+import recepApi from "@/utils/recep";   // axios instance
+import TwoButtons from "@/components/TwoButtons"; // import your bookings component
 
 export default function ReceptionistDashboard() {
   const [menuOpen, setMenuOpen] = useState(true);
   const [showLogoutPopup, setShowLogoutPopup] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [hotel, setHotel] = useState(null);
+  const [activePanel, setActivePanel] = useState(null); // NEW state for panel switching
   const router = useRouter();
 
   useEffect(() => {
     const fetchHotelInfo = async () => {
       try {
-        const res = await recepApi.get("/api/hotel/receptionist/");     
-        // ("/api/hotel/receptionist/{id}/");
+        const res = await recepApi.get("/api/hotel/receptionist/");
         if (res.status === 200) {
           setHotel({ hotel_id: res.data.hotel_id, hotel_name: res.data.hotel_name });
         }
@@ -56,23 +56,20 @@ export default function ReceptionistDashboard() {
             </h2>
           </div>
 
-
           {/* Sidebar buttons */}
-            <button
-              onClick={() => router.push("/receptionist/manage-staffnnattendance")}
-              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
-            >
-              <span className="text-white font-bold">Manage Staff & Attendance</span>
-            </button>
+          <button
+            onClick={() => router.push("/receptionist/manage-staffnnattendance")}
+            className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
+          >
+            <span className="text-white font-bold">Manage Staff & Attendance</span>
+          </button>
 
-
-            <button
-              onClick={() => router.push("/receptionist/send-view-maintenancerequests")}
-              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
-            >
-              <span className="text-white font-bold">Send Maintenance Requests</span>
-            </button>
-
+          <button
+            onClick={() => router.push("/receptionist/send-view-maintenancerequests")}
+            className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
+          >
+            <span className="text-white font-bold">Send Maintenance Requests</span>
+          </button>
 
           {/* Settings */}
           <button
@@ -88,13 +85,9 @@ export default function ReceptionistDashboard() {
               <button className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
                 Notifications & Setting
               </button>
-              
-              <button
-              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
-            >
-              View Promotion/Discount in N&S
-            </button>
-            
+              <button className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap">
+                View Promotion/Discount in N&S
+              </button>
             </div>
           )}
 
@@ -147,8 +140,39 @@ export default function ReceptionistDashboard() {
           </div>
         </div>
 
-        {/* Top buttons and panels */}
-        <FourButtons />
+        {/* NEW Buttons for panels */}
+        <div className="flex justify-center gap-4 mt-6">
+          <button
+            onClick={() => setActivePanel("bookings")}
+            className={`px-4 py-2 rounded-lg ${
+              activePanel === "bookings" ? "bg-blue-600 text-white" : "bg-gray-200"
+            }`}
+          >
+            Manage Bookings
+          </button>
+          <button
+            onClick={() => setActivePanel("earnings")}
+            className={`px-4 py-2 rounded-lg ${
+              activePanel === "earnings" ? "bg-blue-600 text-white" : "bg-gray-200"
+            }`}
+          >
+            Manage Earning Reports
+          </button>
+        </div>
+
+        {/* Panel Content */}
+        <div className="mt-6">
+          {activePanel === "bookings" && (
+            <TwoButtons/>
+          )}
+
+          {activePanel === "earnings" && (
+            <div className="p-6 bg-white/70 rounded-lg shadow">
+              <h3 className="text-lg font-bold mb-4">Manage Earning Report</h3>
+              <p className="text-gray-700">Earning report functionality will go here.</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Logout Confirmation Modal */}

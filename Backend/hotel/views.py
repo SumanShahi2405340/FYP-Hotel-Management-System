@@ -6,6 +6,7 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
 from rest_framework.views import APIView
 from rest_framework import viewsets
+from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework import status, generics, permissions
 from rest_framework.exceptions import PermissionDenied
@@ -17,6 +18,7 @@ from .models import Hotel, CommissionRule, CommissionPayment
 from .models import SendAdminAnnouncement, SendOwnerAnnouncement, SendReceptionistAnnouncement
 from .models import OwnerStarredNotification, CommissionReport
 from .models import RoomInventory, RoomPrice, ManageMaintenanceRequest, Receptionist, Promotion, ManageBookings, Staff, Attendance
+from .models import ManagePayments
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth import authenticate, login, get_user_model
@@ -47,6 +49,7 @@ from .serializers import (
     ReceptionistRegisterSerializer,   
     ManageBookingsSerializer,
     StaffSerializer,AttendanceSerializer,
+    ManagePaymentsSerializer,
 
 )
 
@@ -1058,6 +1061,38 @@ class CommissionReportListCreateView(generics.ListCreateAPIView):
         serializer.save(hotel=user.hotel)
 
 
+
 class ManageBookingsViewSet(viewsets.ModelViewSet):
     queryset = ManageBookings.objects.all()
     serializer_class = ManageBookingsSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(status="Booked")
+
+    def perform_destroy(self, instance):
+        instance.status = "Available"
+        instance.save()
+        instance.delete()
+
+    def list(self, request, *args, **kwargs):
+        now = timezone.now()
+        for booking in self.queryset:
+            if booking.checkout and now > booking.checkout:
+                booking.status = "Available"
+                booking.save()
+        return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        booking = self.get_object()
+        now = timezone.now()
+        if booking.checkout and now > booking.checkout:
+            booking.status = "Available"
+            booking.save()
+        return super().retrieve(request, *args, **kwargs)
+
+
+
+
+class ManagePaymentsViewSet(viewsets.ModelViewSet):
+    queryset = ManagePayments.objects.all().order_by("-date")
+    serializer_class = ManagePaymentsSerializer

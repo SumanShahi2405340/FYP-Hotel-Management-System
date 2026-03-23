@@ -263,13 +263,43 @@ class CommissionReport(models.Model):
 
 
 
+
 class ManageBookings(models.Model):
     name = models.CharField(max_length=100)
     email = models.EmailField()
     contact = models.CharField(max_length=20)
     room = models.CharField(max_length=50)
     days = models.PositiveIntegerField()
+    checkin = models.DateTimeField(null=True, blank=True)
+    checkout = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, default="Booked")
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def current_status(self):
+        now = timezone.now()
+        if self.checkout and now > self.checkout:
+            return "Available"
+        return self.status
+
+    def save(self, *args, **kwargs):
+        now = timezone.now()
+        if self.checkout and now > self.checkout:
+            self.status = "Available"
+        else:
+            self.status = "Booked"
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.name} - {self.room}"
+
+
+
+class ManagePayments(models.Model):
+    customername = models.CharField(max_length=100)
+    service = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.customername} - {self.service} - {self.amount}"

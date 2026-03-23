@@ -58,7 +58,8 @@ from .views import (
     PromotionDetailView,
     CommissionReportListCreateView,
     ManageBookingsViewSet, 
-    AttendanceViewSet,  
+    AttendanceViewSet,
+    ManagePaymentsViewSet,  
       
   
 )
@@ -66,8 +67,10 @@ from .views import (
 # Router for DRF ViewSets
 router = DefaultRouter()
 router.register(r'hotels', HotelViewSet)
-router.register(r'manage-bookings', ManageBookingsViewSet)
 router.register(r'attendance', AttendanceViewSet, basename='attendance')
+router.register(r'manage-bookings', ManageBookingsViewSet)
+router.register(r'manage-payments', ManagePaymentsViewSet)
+
 
 
 urlpatterns = [
@@ -137,9 +140,6 @@ urlpatterns = [
     path("hotel/staff-info/", get_hotel_staff_info, name="get_hotel_staff_info_managestaffnnattendance"),
     path("hotel/add-staff/", add_staff, name="add_staff"),
     path("staff/<int:pk>/delete/", delete_staff, name="delete_staff"),
-
-
-
 
 
     # Promotion endpoints

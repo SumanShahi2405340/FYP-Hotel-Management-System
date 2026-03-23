@@ -112,13 +112,6 @@ TEMPLATES = [
 WSGI_APPLICATION = 'CloudInn.wsgi.application'
 
 
-# Database
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',  # switch to PostgreSQL/MySQL in production
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
 
 
 # Password validation
@@ -159,7 +152,7 @@ DATABASES = {
 }
 
 
-#New For Hotel Registraton]
+#Email Integration For Hotel Registraton]
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587

@@ -16,6 +16,7 @@ from .models import (
     ManageBookings,
     Staff,
     Attendance,
+    ManagePayments,
 )
 
 
@@ -229,7 +230,20 @@ class CommissionReportSerializer(serializers.ModelSerializer):
         read_only_fields = ["hotel", "created_at"]
 
 
+
 class ManageBookingsSerializer(serializers.ModelSerializer):
+    current_status = serializers.SerializerMethodField()
+
     class Meta:
         model = ManageBookings
+        fields = "__all__"
+
+    def get_current_status(self, obj):
+        return obj.current_status()
+
+
+
+class ManagePaymentsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ManagePayments
         fields = "__all__"

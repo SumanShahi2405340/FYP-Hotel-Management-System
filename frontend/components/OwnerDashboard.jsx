@@ -182,8 +182,7 @@ const OwnerDashboard = () => {
         {/* Top buttons */}
         <div className="flex justify-center gap-2 flex-wrap mb-4">
           <button onClick={() => setActivePanel("bookings")} className="px-4 py-2 bg-blue-600 text-white rounded">View Bookings</button>
-          <button onClick={() => setActivePanel("checkincheckout")} className="px-4 py-2 bg-purple-600 text-white rounded">View Check-in/Check-out</button>
-          <button onClick={() => setActivePanel("payment")} className="px-4 py-2 bg-purple-600 text-white rounded">View Payment Status</button>
+          
           <button onClick={() => setActivePanel("earnings")} className="px-4 py-2 bg-blue-600 text-white rounded">View Earning Reports</button>
         </div>
 
