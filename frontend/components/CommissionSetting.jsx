@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { FaChartLine, FaMoneyCheckAlt, FaBookOpen } from 'react-icons/fa';
+import { FaChartLine, FaMoneyCheckAlt, FaBookOpen, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
 
 export default function CommissionSetting() {
   const [showRevenueTable, setShowRevenueTable] = useState(false);
@@ -35,36 +35,23 @@ export default function CommissionSetting() {
     },
   ];
 
-
-
-
-  // Fetch comission revenew report 
+  // Fetch commission revenue report
   useEffect(() => {
-  const fetchRevenue = async () => {
-    try {
-      let url = 'http://localhost:8000/api/commission-revenue/';
-
-      // Convert month name to padded number (e.g. "Dec" → "12")
-      const monthNumber = new Date(`${selectedMonth} 1, ${selectedYear}`).getMonth() + 1;
-      const paddedMonth = monthNumber.toString().padStart(2, '0');
-
-      url += `?month=${paddedMonth}&year=${selectedYear}`;
-
-      const res = await fetch(url);
-      const data = await res.json();
-      setRevenueData(data);
-    } catch (err) {
-      console.error('Error fetching commission revenue:', err);
-    }
-  };
-
-  if (showRevenueTable) {
-    fetchRevenue();
-  }
-}, [selectedMonth, selectedYear, showRevenueTable]);
-
-
-
+    const fetchRevenue = async () => {
+      try {
+        let url = 'http://localhost:8000/api/commission-revenue/';
+        const monthNumber = new Date(`${selectedMonth} 1, ${selectedYear}`).getMonth() + 1;
+        const paddedMonth = monthNumber.toString().padStart(2, '0');
+        url += `?month=${paddedMonth}&year=${selectedYear}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        setRevenueData(data);
+      } catch (err) {
+        console.error('Error fetching commission revenue:', err);
+      }
+    };
+    if (showRevenueTable) fetchRevenue();
+  }, [selectedMonth, selectedYear, showRevenueTable]);
 
   // Fetch active hotels for payments
   useEffect(() => {
@@ -72,63 +59,47 @@ export default function CommissionSetting() {
       try {
         const res = await fetch('http://localhost:8000/api/commission-payments/active-hotels/');
         const data = await res.json();
-
         const monthNumber = new Date(`${selectedMonth} 1, ${selectedYear}`).getMonth() + 1;
         const paddedMonth = monthNumber.toString().padStart(2, '0');
         const startDue = `${selectedYear}-${paddedMonth}-15/25`;
-
         const formatted = data.map(p => ({
           ...p,
           start_due_date: startDue,
           status: p.status || 'Pending',
           action: p.status === 'Pending' ? 'Paid' : 'Pending',
         }));
-
         setPayments(formatted);
       } catch (err) {
         console.error('Error fetching payments:', err);
       }
     };
-
     fetchPayments();
   }, [selectedMonth, selectedYear]);
 
-// Confirm all payments
-const handleConfirmPayments = async () => {
-  try {
-    const res = await fetch('http://localhost:8000/api/commission-payments/confirm/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payments),
-    });
-
-    if (res.ok) {
-      const response = await res.json();
-
-      //  Show alert if some hotels already had 2 entries
-      if (response.already_full && response.already_full.length > 0) {
-        alert(`Commission payment data already saved twice for: ${response.already_full.join(", ")}`);
+  // Confirm all payments
+  const handleConfirmPayments = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/commission-payments/confirm/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payments),
+      });
+      if (res.ok) {
+        const response = await res.json();
+        if (response.already_full && response.already_full.length > 0) {
+          alert(`Commission payment data already saved twice for: ${response.already_full.join(", ")}`);
+        } else {
+          alert(response.message);
+        }
+        const reset = payments.map(p => ({ ...p, status: 'Pending', action: 'Paid' }));
+        setPayments(reset);
       } else {
-        alert(response.message);
+        alert('Error confirming payments');
       }
-
-      // Reset UI: status → Pending, action → Mark Paid
-      const reset = payments.map(p => ({
-        ...p,
-        status: 'Pending',
-        action: 'Paid',
-      }));
-      setPayments(reset);
-    } else {
-      alert('Error confirming payments');
+    } catch (err) {
+      console.error('Error confirming payments:', err);
     }
-  } catch (err) {
-    console.error('Error confirming payments:', err);
-  }
-};
-
-
-
+  };
 
   // Fetch commission rules
   useEffect(() => {
@@ -169,11 +140,9 @@ const handleConfirmPayments = async () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(rules),
       });
-
       if (response.ok) {
         alert('Rules saved to DB');
         setIsEditing(false);
-
         const updated = await fetch('http://localhost:8000/api/commission-rules/');
         const data = await updated.json();
         const formatted = data.map(rule => ({
@@ -192,22 +161,17 @@ const handleConfirmPayments = async () => {
     }
   };
 
-
-
-
   // Toggle tables
   const handleRevenueOverview = () => {
     setShowRevenueTable(!showRevenueTable);
     setShowPaymentTable(false);
     setShowRulesTable(false);
   };
-
   const handleTrackPayment = () => {
     setShowPaymentTable(!showPaymentTable);
     setShowRevenueTable(false);
     setShowRulesTable(false);
   };
-
   const handleViewRules = () => {
     setShowRulesTable(!showRulesTable);
     setShowRevenueTable(false);
@@ -215,251 +179,380 @@ const handleConfirmPayments = async () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white px-10 py-16">
-      <h1 className="text-4xl font-bold text-center mb-12">Commission Setting</h1>
+    <>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Montserrat:wght@300;400;500;600;700&display=swap');
+        :root {
+          --gold: #C9A84C;
+          --gold-light: #E8C97A;
+          --gold-dim: rgba(201,168,76,0.18);
+          --gold-border: rgba(201,168,76,0.35);
+          --dark: #0D0D0D;
+          --card-bg: rgba(10,10,10,0.72);
+          --card-border: rgba(201,168,76,0.22);
+          --text-primary: #F5EDD6;
+          --text-muted: rgba(245,237,214,0.5);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Montserrat', sans-serif; background: var(--dark); color: var(--text-primary); }
+        .serif { font-family: 'Cormorant Garamond', serif; }
+        .lux-card {
+          background: var(--card-bg);
+          border: 1px solid var(--card-border);
+          backdrop-filter: blur(20px);
+          transition: border-color 0.4s ease, box-shadow 0.4s ease;
+        }
+        .lux-card:hover {
+          border-color: rgba(201,168,76,0.55);
+          box-shadow: 0 0 30px -6px rgba(201,168,76,0.25);
+        }
+        .gold-divider {
+          height: 1px;
+          background: linear-gradient(90deg, transparent, var(--gold-border), transparent);
+          margin: 20px 0;
+        }
+        .btn-gold {
+          background: var(--gold-dim);
+          border: 1px solid var(--gold-border);
+          color: var(--gold-light);
+          transition: all 0.3s;
+        }
+        .btn-gold:hover {
+          background: rgba(201,168,76,0.28);
+          border-color: var(--gold);
+          transform: scale(1.02);
+          box-shadow: 0 0 12px rgba(201,168,76,0.3);
+        }
+        .btn-primary {
+          background: linear-gradient(135deg, #3B82F6, #2563EB);
+          border: none;
+          color: white;
+        }
+        .btn-primary:hover {
+          transform: scale(1.02);
+          box-shadow: 0 8px 20px rgba(59,130,246,0.3);
+        }
+        .btn-success {
+          background: linear-gradient(135deg, #10B981, #059669);
+          border: none;
+          color: white;
+        }
+        .btn-success:hover {
+          transform: scale(1.02);
+          box-shadow: 0 8px 20px rgba(16,185,129,0.3);
+        }
+        .btn-warning {
+          background: linear-gradient(135deg, #F59E0B, #D97706);
+          border: none;
+          color: white;
+        }
+        .btn-warning:hover {
+          transform: scale(1.02);
+          box-shadow: 0 8px 20px rgba(245,158,11,0.3);
+        }
+        .btn-purple {
+          background: linear-gradient(135deg, #8B5CF6, #7C3AED);
+          border: none;
+          color: white;
+        }
+        .btn-purple:hover {
+          transform: scale(1.02);
+          box-shadow: 0 8px 20px rgba(139,92,246,0.3);
+        }
+        .lux-table th {
+          font-size: 10px;
+          letter-spacing: 0.15em;
+          text-transform: uppercase;
+          color: var(--gold);
+          font-weight: 600;
+          padding: 12px 16px;
+          border-bottom: 1px solid var(--gold-border);
+        }
+        .lux-table td {
+          padding: 12px 16px;
+          font-size: 13px;
+          color: var(--text-muted);
+          border-bottom: 1px solid rgba(201,168,76,0.08);
+        }
+        .lux-table tr:hover td {
+          color: var(--text-primary);
+          background: var(--gold-dim);
+        }
+        .select-lux {
+          background: var(--card-bg);
+          border: 1px solid var(--gold-border);
+          color: var(--text-primary);
+          padding: 6px 24px 6px 12px;
+          border-radius: 4px;
+          font-size: 12px;
+          appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23C9A84C' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 8px center;
+          background-size: 14px;
+        }
+        .select-lux:focus {
+          outline: none;
+          border-color: var(--gold);
+        }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-up {
+          animation: fadeUp 0.5s ease forwards;
+        }
+      `}</style>
 
-      <div className="flex justify-center gap-6 mb-12">
-        <button onClick={handleRevenueOverview} className="flex items-center gap-3 px-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-700 transition shadow-lg">
-          <FaChartLine className="text-xl" />
-          <span className="font-semibold whitespace-nowrap">Track Commission Revenue</span>
-        </button>
-        <button onClick={handleTrackPayment} className="flex items-center gap-3 px-6 py-4 rounded-xl bg-green-600 hover:bg-green-700 transition shadow-lg">
-          <FaMoneyCheckAlt className="text-xl" />
-          <span className="font-semibold whitespace-nowrap">Confirm Commission Payments</span>
-        </button>
-        <button onClick={handleViewRules} className="flex items-center gap-3 px-6 py-4 rounded-xl bg-purple-600 hover:bg-purple-700 transition shadow-lg">
-          <FaBookOpen className="text-xl" />
-          <span className="font-semibold whitespace-nowrap">View Commission Rules</span>
-        </button>
-      </div>
-
-
-       {/* Track Revenue Table */}
-      {showRevenueTable && (
-        <div className="max-w-4xl mx-auto bg-white text-gray-800 rounded-lg shadow-lg p-6">
-          <h2 className="text-2xl font-bold mb-4">Track Commission Revenue</h2>
-
-          {/* Month and Year Dropdowns */}
-          <div className="flex justify-end items-center gap-4 mb-4">
-            <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="px-4 py-2 rounded bg-gray-100 text-gray-800">
-              {Array.from({ length: 10 }, (_, i) => 2025 + i).map((year) => (
-                <option key={year} value={year.toString()}>{year}</option>
-              ))}
-            </select>
-            <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="px-4 py-2 rounded bg-gray-100 text-gray-800">
-              {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((month) => (
-                <option key={month} value={month}>{month}</option>
-              ))}
-            </select>
-          </div>
-          <table className="w-full table-auto border-collapse">
-            <thead>
-              <tr className="bg-gray-200 text-left">
-                <th className="px-4 py-2">Hotel ID</th>
-                <th className="px-4 py-2">Hotel Name</th>
-                <th className="px-4 py-2">Commission Revenue</th>
-                <th className="px-4 py-2">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {revenueData.map((item) => (
-                <tr key={item.payment_id} className="border-t">
-                  <td className="px-4 py-2">{item.payment_id}</td>
-                  <td className="px-4 py-2">{item.hotel_name}</td>
-                  <td className="px-4 py-2">NPR {item.amount}</td>
-                  <td className="px-4 py-2">{item.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="relative min-h-screen bg-black overflow-hidden">
+        {/* Background - cleaned, no pattern, brighter overlay */}
+        <div className="fixed inset-0 z-0">
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: "url('https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1800&auto=format')",
+              filter: 'brightness(0.45) saturate(0.9)',
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-gray-900/40 to-black/50" />
         </div>
-      )}
 
+        <div className="relative z-10 px-6 md:px-12 py-16">
+          <div className="max-w-6xl mx-auto">
+            {/* Page Header */}
+            <div className="text-center mb-12 fade-up" style={{ animationDelay: '0.05s', opacity: 0 }}>
+              <div className="inline-flex items-center gap-2 bg-gold-dim/30 px-4 py-1 rounded-full border border-gold-border">
+                <span className="w-2 h-2 bg-gold rounded-full" />
+                <span className="text-xs uppercase tracking-wider text-gold-light">Commission Management</span>
+              </div>
+              <h1 className="serif text-5xl md:text-6xl font-light text-white mt-6 mb-4">Commission Setting</h1>
+              <div className="gold-divider w-24 mx-auto" />
+            </div>
 
-
-
-      {/* Payment Table */}
-      {showPaymentTable && (
-        <div className="max-w-4xl mx-auto bg-white text-gray-800 rounded-lg shadow-lg p-6">
-          <h2 className="text-2xl font-bold mb-4">Confirm Commission Payments</h2>
-
-          {/* Month and Year Dropdowns */}
-          <div className="flex justify-end items-center gap-4 mb-4">
-            <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="px-4 py-2 rounded bg-gray-100 text-gray-800">
-              {Array.from({ length: 10 }, (_, i) => 2025 + i).map((year) => (
-                <option key={year} value={year.toString()}>{year}</option>
-              ))}
-            </select>
-            <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="px-4 py-2 rounded bg-gray-100 text-gray-800">
-              {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month) => (
-                <option key={month} value={month}>{month}</option>
-              ))}
-            </select>
-          </div>
-
-          <table className="w-full table-auto border-collapse">
-            <thead>
-              <tr className="bg-gray-200 text-left">
-                <th className="px-4 py-2">Payment ID</th>
-                <th className="px-4 py-2">Hotel Name</th>
-                <th className="px-4 py-2">Amount</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2">Action</th>
-                <th className="px-4 py-2">Start/Due Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payments.map((payment, idx) => (
-                <tr key={payment.id} className="border-t">
-                  <td className="px-4 py-2">{payment.id}</td>
-                  <td className="px-4 py-2">{payment.hotel}</td>
-                  <td className="px-4 py-2">{payment.amount}</td>
-                                    <td
-                    className={`px-4 py-2 font-semibold ${
-                      payment.status === 'Paid'
-                        ? 'text-green-600'
-                        : payment.status === 'Pending'
-                        ? 'text-yellow-600'
-                        : 'text-red-600'
-                    }`}
-                  >
-                    {payment.status}
-                  </td>
-                  <td className="px-4 py-2">
-                    <button
-                      onClick={() => {
-                        const updated = [...payments];
-                        // Toggle both status and action together
-                        if (updated[idx].status === 'Pending') {
-                          updated[idx].status = 'Paid';
-                          updated[idx].action = 'Pending';
-                        } else {
-                          updated[idx].status = 'Pending';
-                          updated[idx].action = 'Paid';
-                        }
-                        setPayments(updated);
-                      }}
-                      className={`px-3 py-1 rounded text-white ${
-                        payment.status === 'Paid'
-                          ? 'bg-yellow-500 hover:bg-yellow-600'
-                          : 'bg-green-500 hover:bg-green-600'
-                      }`}
-                    >
-                      {payment.action}
-                    </button>
-                  </td>
-                  <td className="px-4 py-2">{payment.start_due_date}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan="6" className="px-4 py-4 text-right">
-                  <button
-                    onClick={handleConfirmPayments}
-                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition"
-                  >
-                    Confirm All Payments
-                  </button>
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-    
-
-      {/* Show Rules Table */}
-      {showRulesTable && (
-        <div className="max-w-4xl mx-auto bg-white text-gray-800 rounded-lg shadow-lg p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold">Commission Rules</h2>
-            <button
-              onClick={() => setIsEditing(!isEditing)}
-              className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600"
-            >
-              {isEditing ? 'Cancel Edit' : 'Edit Rules'}
-            </button>
-          </div>
-
-          <table className="w-full table-auto border-collapse">
-            <thead>
-              <tr className="bg-gray-200 text-left">
-                <th className="px-4 py-2">Rule ID</th>
-                <th className="px-4 py-2">Rule Name</th>
-                <th className="px-4 py-2">Description</th>
-                <th className="px-4 py-2">Effective Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map((rule, idx) => (
-                <tr key={rule.id} className="border-t">
-                  <td className="px-4 py-2">{rule.id}</td>
-                  <td className="px-4 py-2">
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={rule.name}
-                        onChange={(e) => {
-                          const newRules = [...rules];
-                          newRules[idx].name = e.target.value;
-                          setRules(newRules);
-                        }}
-                        className="border px-2 py-1 rounded w-full"
-                      />
-                    ) : (
-                      rule.name
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={rule.desc}
-                        onChange={(e) => {
-                          const newRules = [...rules];
-                          newRules[idx].desc = e.target.value;
-                          setRules(newRules);
-                        }}
-                        className="border px-2 py-1 rounded w-full"
-                      />
-                    ) : (
-                      rule.desc
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    {isEditing ? (
-                      <input
-                        type="date"
-                        value={rule.date}
-                        onChange={(e) => {
-                          const newRules = [...rules];
-                          newRules[idx].date = e.target.value;
-                          setRules(newRules);
-                        }}
-                        className="border px-2 py-1 rounded"
-                      />
-                    ) : (
-                      rule.date
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {isEditing && (
-            <div className="flex justify-end mt-6">
-              <button
-                onClick={handleSaveRules}
-                className="px-6 py-2 rounded bg-green-600 text-white hover:bg-green-700"
-              >
-                Save Rules
+            {/* Action Buttons */}
+            <div className="flex flex-wrap justify-center gap-5 mb-16 fade-up" style={{ animationDelay: '0.1s', opacity: 0 }}>
+              <button onClick={handleRevenueOverview} className="flex items-center gap-3 px-6 py-3 rounded-full bg-blue-600/80 hover:bg-blue-600 text-white transition-all shadow-lg hover:scale-105">
+                <FaChartLine size={18} />
+                <span className="font-semibold">Track Commission Revenue</span>
+              </button>
+              <button onClick={handleTrackPayment} className="flex items-center gap-3 px-6 py-3 rounded-full bg-green-600/80 hover:bg-green-600 text-white transition-all shadow-lg hover:scale-105">
+                <FaMoneyCheckAlt size={18} />
+                <span className="font-semibold">Confirm Commission Payments</span>
+              </button>
+              <button onClick={handleViewRules} className="flex items-center gap-3 px-6 py-3 rounded-full bg-purple-600/80 hover:bg-purple-600 text-white transition-all shadow-lg hover:scale-105">
+                <FaBookOpen size={18} />
+                <span className="font-semibold">View Commission Rules</span>
               </button>
             </div>
-          )}
+
+            {/* Revenue Table */}
+            {showRevenueTable && (
+              <div className="lux-card rounded-2xl p-6 fade-up" style={{ animationDelay: '0.2s', opacity: 0 }}>
+                <div className="flex flex-wrap justify-between items-center mb-6">
+                  <h2 className="serif text-2xl font-light text-white">Track Commission Revenue</h2>
+                  <div className="flex gap-3">
+                    <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="select-lux">
+                      {Array.from({ length: 10 }, (_, i) => 2025 + i).map(y => <option key={y}>{y}</option>)}
+                    </select>
+                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="select-lux">
+                      {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(m => <option key={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="lux-table w-full">
+                    <thead>
+                      <tr>
+                        <th>Hotel ID</th>
+                        <th>Hotel Name</th>
+                        <th>Commission Revenue</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {revenueData.map(item => (
+                        <tr key={item.payment_id}>
+                          <td>{item.payment_id}</td>
+                          <td className="font-medium text-white/90">{item.hotel_name}</td>
+                          <td><span className="text-gold-light">NPR {item.amount}</span></td>
+                          <td>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              item.status === 'Paid' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                            }`}>{item.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Payment Table */}
+            {showPaymentTable && (
+              <div className="lux-card rounded-2xl p-6 fade-up" style={{ animationDelay: '0.2s', opacity: 0 }}>
+                <div className="flex flex-wrap justify-between items-center mb-6">
+                  <h2 className="serif text-2xl font-light text-white">Confirm Commission Payments</h2>
+                  <div className="flex gap-3">
+                    <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="select-lux">
+                      {Array.from({ length: 10 }, (_, i) => 2025 + i).map(y => <option key={y}>{y}</option>)}
+                    </select>
+                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="select-lux">
+                      {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(m => <option key={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="lux-table w-full">
+                    <thead>
+                      <tr>
+                        <th>Payment ID</th>
+                        <th>Hotel Name</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                        <th>Start/Due Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payments.map((payment, idx) => (
+                        <tr key={payment.id}>
+                          <td>{payment.id}</td>
+                          <td>{payment.hotel}</td>
+                          <td><span className="text-gold-light">NPR {payment.amount}</span></td>
+                          <td>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              payment.status === 'Paid' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                            }`}>{payment.status}</span>
+                          </td>
+                          <td>
+                            <button
+                              onClick={() => {
+                                const updated = [...payments];
+                                if (updated[idx].status === 'Pending') {
+                                  updated[idx].status = 'Paid';
+                                  updated[idx].action = 'Pending';
+                                } else {
+                                  updated[idx].status = 'Pending';
+                                  updated[idx].action = 'Paid';
+                                }
+                                setPayments(updated);
+                              }}
+                              className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                                payment.status === 'Paid' ? 'bg-yellow-500/80 hover:bg-yellow-600' : 'bg-green-500/80 hover:bg-green-600'
+                              } text-white`}
+                            >
+                              {payment.action}
+                            </button>
+                          </td>
+                          <td>{payment.start_due_date}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan="6" className="pt-6 text-right">
+                          <button onClick={handleConfirmPayments} className="px-6 py-2 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white font-semibold transition shadow-lg">
+                            Confirm All Payments
+                          </button>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Rules Table */}
+            {showRulesTable && (
+              <div className="lux-card rounded-2xl p-6 fade-up" style={{ animationDelay: '0.2s', opacity: 0 }}>
+                <div className="flex flex-wrap justify-between items-center mb-6">
+                  <h2 className="serif text-2xl font-light text-white">Commission Rules</h2>
+                  <button
+                    onClick={() => setIsEditing(!isEditing)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white transition"
+                  >
+                    {isEditing ? <FaTimes size={14} /> : <FaEdit size={14} />}
+                    {isEditing ? 'Cancel' : 'Edit Rules'}
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="lux-table w-full">
+                    <thead>
+                      <tr>
+                        <th>Rule ID</th>
+                        <th>Rule Name</th>
+                        <th>Description</th>
+                        <th>Effective Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rules.map((rule, idx) => (
+                        <tr key={rule.id}>
+                          <td>{rule.id}</td>
+                          <td>
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={rule.name}
+                                onChange={(e) => {
+                                  const newRules = [...rules];
+                                  newRules[idx].name = e.target.value;
+                                  setRules(newRules);
+                                }}
+                                className="bg-black/40 border border-gold-border rounded px-2 py-1 w-full text-white"
+                              />
+                            ) : rule.name}
+                          </td>
+                          <td>
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={rule.desc}
+                                onChange={(e) => {
+                                  const newRules = [...rules];
+                                  newRules[idx].desc = e.target.value;
+                                  setRules(newRules);
+                                }}
+                                className="bg-black/40 border border-gold-border rounded px-2 py-1 w-full text-white"
+                              />
+                            ) : rule.desc}
+                          </td>
+                          <td>
+                            {isEditing ? (
+                              <input
+                                type="date"
+                                value={rule.date}
+                                onChange={(e) => {
+                                  const newRules = [...rules];
+                                  newRules[idx].date = e.target.value;
+                                  setRules(newRules);
+                                }}
+                                className="bg-black/40 border border-gold-border rounded px-2 py-1 text-white"
+                              />
+                            ) : rule.date}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {isEditing && (
+                  <div className="flex justify-end mt-6">
+                    <button
+                      onClick={handleSaveRules}
+                      className="flex items-center gap-2 px-6 py-2 rounded-lg bg-green-600/80 hover:bg-green-600 text-white transition"
+                    >
+                      <FaSave size={14} />
+                      Save Rules
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }

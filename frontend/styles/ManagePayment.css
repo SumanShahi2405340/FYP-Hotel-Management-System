@@ -1,0 +1,877 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap');
+
+:root {
+  --gold: #c9a84c;
+  --gold-light: #e8cc7a;
+  --gold-dark: #9a7a2e;
+  --cream: #faf7f0;
+  --dark: #1a1612;
+  --glass: rgba(255, 252, 245, 0.92);
+  --glass-border: rgba(201, 168, 76, 0.3);
+  --text-primary: #1a1208;
+  --text-secondary: #4a3820;
+  --text-muted: #6b5a3e;
+  --khalti-purple: #5C2D91;
+  --khalti-light: #7B3FBE;
+  --success-green: #16a085;
+}
+
+/* ── Layout ─────────────────────────────────────── */
+.payments-wrapper {
+  min-height: 100vh;
+  width: 100%;
+  background-image: url('/6.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.payments-overlay {
+  min-height: 100vh;
+  width: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(26, 22, 18, 0.35) 0%,
+    rgba(26, 22, 18, 0.15) 50%,
+    rgba(26, 22, 18, 0.35) 100%
+  );
+  padding: 2.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.payments-card {
+  width: 100%;
+  max-width: 1400px;
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 2px;
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    0 25px 60px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(201, 168, 76, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+  animation: fadeSlideIn 0.6s ease forwards;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Card Header ─────────────────────────────────── */
+.card-header {
+  background: linear-gradient(135deg, #1a1612 0%, #2d2518 50%, #1a1612 100%);
+  padding: 2rem 2.5rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+.card-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+.header-ornament {
+  color: var(--gold);
+  font-size: 0.72rem;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  opacity: 0.9;
+}
+
+.header-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 2.6rem;
+  font-weight: 700;
+  color: var(--gold-light);
+  letter-spacing: 0.05em;
+  margin: 0;
+  line-height: 1.2;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Card Body ───────────────────────────────────── */
+.card-body {
+  padding: 2rem 2.5rem;
+}
+
+/* ── Action Bar ──────────────────────────────────── */
+.action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  gap: 1rem;
+}
+
+/* ── Buttons ─────────────────────────────────────── */
+.btn-primary {
+  padding: 0.7rem 1.6rem;
+  background: linear-gradient(135deg, var(--gold-dark), var(--gold), var(--gold-light));
+  color: #1a1208;
+  border: none;
+  border-radius: 2px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(201, 168, 76, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+  transition: left 0.5s ease;
+}
+
+.btn-primary:hover::before { left: 100%; }
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(201, 168, 76, 0.45);
+}
+
+.btn-secondary {
+  padding: 0.7rem 1.6rem;
+  background: transparent;
+  color: var(--gold-dark);
+  border: 2px solid var(--gold);
+  border-radius: 2px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--gold);
+  color: #1a1208;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(201, 168, 76, 0.3);
+}
+
+/* ── Form Panel ──────────────────────────────────── */
+.form-panel {
+  background: rgba(201, 168, 76, 0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: 2px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  animation: fadeSlideIn 0.3s ease forwards;
+}
+
+.form-input {
+  flex: 1;
+  min-width: 140px;
+  padding: 0.65rem 1rem;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1.5px solid rgba(201, 168, 76, 0.3);
+  border-radius: 2px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+.form-input:focus {
+  border-color: var(--gold);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.1);
+}
+
+/* ── Section Label ───────────────────────────────── */
+.section-label {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.05em;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1.5px;
+  background: linear-gradient(90deg, var(--gold-light), transparent);
+}
+
+/* ── Bills Table ─────────────────────────────────── */
+.bills-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.bills-table thead tr {
+  background: linear-gradient(135deg, #2d2518, #1a1612);
+}
+
+.bills-table thead th {
+  padding: 1rem 1.25rem;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--gold-light);
+  text-align: left;
+  border-bottom: 1.5px solid var(--gold-dark);
+  white-space: nowrap;
+}
+
+.bills-table tbody tr {
+  border-bottom: 1px solid rgba(201, 168, 76, 0.12);
+  transition: background 0.2s ease;
+}
+
+.bills-table tbody tr:hover { background: rgba(201, 168, 76, 0.05); }
+.bills-table tbody tr.booking-row { background: rgba(201, 168, 76, 0.04); }
+
+.bills-table tbody td {
+  padding: 1rem 1.25rem;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  vertical-align: middle;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 500;
+}
+
+.bills-table tbody td.amount-cell {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.customer-name { font-weight: 700; color: var(--text-primary); font-size: 0.9rem; }
+.date-text     { color: var(--text-secondary); font-size: 0.82rem; font-weight: 500; }
+.desc-text     { color: var(--text-secondary); font-size: 0.85rem; font-weight: 500; }
+
+.service-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: rgba(201, 168, 76, 0.15);
+  border: 1.5px solid rgba(201, 168, 76, 0.4);
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--gold-dark);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.table-input {
+  width: 100%;
+  padding: 0.4rem 0.7rem;
+  border: 1.5px solid rgba(201, 168, 76, 0.4);
+  border-radius: 2px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: 'Montserrat', sans-serif;
+  background: white;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.table-input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(201, 168, 76, 0.12);
+}
+
+/* ── Row Action Buttons ──────────────────────────── */
+.btn-action {
+  padding: 0.32rem 0.85rem;
+  border: none;
+  border-radius: 2px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.btn-edit   { background: linear-gradient(135deg, #1e3a5f, #2563a8); color: white; }
+.btn-save   { background: linear-gradient(135deg, #1a4a2e, #22863a); color: white; }
+.btn-cancel { background: linear-gradient(135deg, #3a3a3a, #555);    color: white; }
+.btn-delete { background: linear-gradient(135deg, #7a1a1a, #c0392b); color: white; }
+
+.btn-edit:hover,
+.btn-save:hover,
+.btn-cancel:hover,
+.btn-delete:hover { opacity: 0.85; transform: translateY(-1px); }
+
+.actions-cell { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; }
+.dash-cell    { color: rgba(201,168,76,0.5); font-size: 1.3rem; text-align: center; font-weight: 700; }
+
+/* ── Grand Total Panel ───────────────────────────── */
+.total-panel {
+  margin-top: 2rem;
+  padding: 1.75rem 2rem;
+  background: linear-gradient(135deg, #1a1612 0%, #2d2518 50%, #1a1612 100%);
+  border-radius: 2px;
+  border: 1px solid var(--gold-dark);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.total-panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+.total-label {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(201, 168, 76, 0.8);
+  margin-bottom: 0.4rem;
+}
+
+.total-amount {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 2.6rem;
+  font-weight: 700;
+  color: var(--gold-light);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.total-currency { font-size: 1.5rem; font-weight: 600; margin-right: 0.2rem; opacity: 0.8; }
+
+.btn-pay {
+  padding: 0.95rem 2.5rem;
+  background: linear-gradient(135deg, var(--gold-dark), var(--gold), var(--gold-light));
+  color: #1a1208;
+  border: none;
+  border-radius: 2px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(201, 168, 76, 0.4);
+  white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-pay::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+  transition: left 0.5s ease;
+}
+
+.btn-pay:hover::before { left: 100%; }
+.btn-pay:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(201, 168, 76, 0.55); }
+
+/* ── Modal Base ──────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 22, 18, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  animation: fadeIn 0.2s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modal-card {
+  background: var(--cream);
+  border-radius: 2px;
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+  width: 440px;
+  overflow: hidden;
+  animation: modalIn 0.3s ease forwards;
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(-20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-header {
+  background: linear-gradient(135deg, #1a1612, #2d2518);
+  padding: 1.5rem 2rem;
+  text-align: center;
+  position: relative;
+}
+
+.modal-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+.modal-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--gold-light);
+  letter-spacing: 0.05em;
+  margin: 0;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.modal-body { padding: 1.75rem 2rem; }
+
+/* ── Modal Buttons ───────────────────────────────── */
+.modal-btn {
+  width: 100%;
+  padding: 0.85rem 1.5rem;
+  border: none;
+  border-radius: 2px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-bottom: 0.75rem;
+}
+
+.modal-btn-offline {
+  background: linear-gradient(135deg, #2d2518, #3d3020);
+  color: var(--gold-light);
+  border: 1.5px solid var(--gold-dark);
+}
+.modal-btn-offline:hover {
+  background: linear-gradient(135deg, #3d3020, #4d4028);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.modal-btn-online {
+  background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+  color: #1a1208;
+}
+.modal-btn-online:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(201, 168, 76, 0.4); }
+
+/* ── Khalti Button ───────────────────────────────── */
+.modal-btn-khalti {
+  background: linear-gradient(135deg, var(--khalti-purple), var(--khalti-light));
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+.modal-btn-khalti:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 15px rgba(92, 45, 145, 0.4); }
+
+.khalti-logo-text {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+}
+
+/* ── Modal Divider ───────────────────────────────── */
+.modal-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1rem 0;
+  color: rgba(60, 40, 20, 0.5);
+  font-size: 0.7rem;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.modal-divider::before,
+.modal-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(201, 168, 76, 0.25);
+}
+
+/* ── Modal Inputs ────────────────────────────────── */
+.modal-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1.5px solid rgba(201, 168, 76, 0.3);
+  border-radius: 2px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: white;
+  outline: none;
+  box-sizing: border-box;
+  margin-bottom: 1rem;
+  transition: all 0.3s ease;
+}
+
+.modal-input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.1);
+}
+
+.modal-close {
+  display: block;
+  text-align: center;
+  margin-top: 0.75rem;
+  color: #c0392b;
+  font-size: 0.72rem;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.modal-close:hover { text-decoration: underline; }
+
+/* ── No Methods ──────────────────────────────────── */
+.no-methods {
+  text-align: center;
+  color: rgba(60, 40, 20, 0.5);
+  font-size: 0.85rem;
+  font-style: italic;
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 600;
+  padding: 0.5rem 0;
+}
+
+/* ── QR Container ────────────────────────────────── */
+.qr-container {
+  text-align: center;
+  padding: 1.25rem;
+  background: rgba(92, 45, 145, 0.05);
+  border: 1.5px solid rgba(92, 45, 145, 0.2);
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  animation: fadeSlideIn 0.3s ease forwards;
+}
+
+.qr-label {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.1rem;
+  color: var(--khalti-purple);
+  margin-bottom: 0.75rem;
+  font-weight: 700;
+}
+
+.qr-amount {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.08em;
+  margin-bottom: 1rem;
+}
+
+.qr-image {
+  width: 160px;
+  height: 160px;
+  margin: 0 auto 1rem;
+  display: block;
+  border: 3px solid rgba(92, 45, 145, 0.2);
+  border-radius: 4px;
+  object-fit: contain;
+  background: white;
+  padding: 6px;
+}
+
+.qr-placeholder {
+  width: 160px;
+  height: 160px;
+  margin: 0 auto 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3eef9;
+  border: 2px dashed rgba(92, 45, 145, 0.3);
+  border-radius: 4px;
+  color: var(--khalti-purple);
+  font-size: 0.75rem;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  text-align: center;
+  padding: 1rem;
+}
+
+.btn-confirm-payment {
+  width: 100%;
+  padding: 0.85rem 1.5rem;
+  background: linear-gradient(135deg, var(--khalti-purple), var(--khalti-light));
+  color: white;
+  border: none;
+  border-radius: 2px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 0.5rem;
+}
+.btn-confirm-payment:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 15px rgba(92,45,145,0.4); }
+
+/* ── Verifying State ─────────────────────────────── */
+.verifying-container {
+  text-align: center;
+  padding: 1.5rem 0;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(92, 45, 145, 0.15);
+  border-top-color: var(--khalti-purple);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.verifying-text {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--khalti-purple);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.verifying-countdown {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--khalti-purple);
+  margin-top: 0.5rem;
+}
+
+/* ── Success State ───────────────────────────────── */
+.success-container {
+  text-align: center;
+  padding: 1rem 0;
+  animation: fadeSlideIn 0.4s ease forwards;
+}
+
+.success-icon {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, #16a085, #1abc9c);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  font-size: 1.8rem;
+  box-shadow: 0 8px 20px rgba(22, 160, 133, 0.35);
+  animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes popIn {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+.success-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #16a085;
+  margin-bottom: 0.4rem;
+}
+
+.success-subtitle {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  margin-bottom: 1.25rem;
+}
+
+.success-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: rgba(22, 160, 133, 0.08);
+  border: 1.5px solid rgba(22, 160, 133, 0.3);
+  border-radius: 2px;
+  color: #1a7a5e;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-family: 'Montserrat', sans-serif;
+  margin-bottom: 1rem;
+}
+
+.btn-done {
+  width: 100%;
+  padding: 0.85rem 1.5rem;
+  background: linear-gradient(135deg, #16a085, #1abc9c);
+  color: white;
+  border: none;
+  border-radius: 2px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+.btn-done:hover { opacity: 0.9; transform: translateY(-1px); }
+
+/* ── QR Upload Area ──────────────────────────────── */
+.qr-upload-area {
+  border: 2px dashed rgba(201, 168, 76, 0.4);
+  border-radius: 4px;
+  padding: 1.25rem;
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 1rem;
+  transition: all 0.3s ease;
+  background: rgba(201, 168, 76, 0.03);
+}
+.qr-upload-area:hover {
+  border-color: var(--gold);
+  background: rgba(201, 168, 76, 0.07);
+}
+
+.qr-upload-preview {
+  width: 110px;
+  height: 110px;
+  object-fit: contain;
+  margin: 0 auto 0.5rem;
+  display: block;
+  border: 1.5px solid rgba(201, 168, 76, 0.3);
+  border-radius: 4px;
+  background: white;
+  padding: 4px;
+}
+
+.qr-upload-label {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--gold-dark);
+  letter-spacing: 0.06em;
+}
+
+.qr-upload-hint {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+  font-family: 'Montserrat', sans-serif;
+}
+
+/* ── Method List in Add Form ─────────────────────── */
+.method-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.75rem;
+  background: rgba(92, 45, 145, 0.08);
+  border: 1px solid rgba(92, 45, 145, 0.25);
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--khalti-purple);
+  font-family: 'Montserrat', sans-serif;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+  margin-right: 0.4rem;
+}
+
+/* ── Back Button in Modal ────────────────────────── */
+.btn-back {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: color 0.2s ease;
+}
+.btn-back:hover { color: var(--text-primary); }

@@ -295,11 +295,27 @@ class ManageBookings(models.Model):
 
 
 class ManagePayments(models.Model):
-    customername = models.CharField(max_length=100)
+    booking = models.ForeignKey(ManageBookings, on_delete=models.CASCADE, related_name="payments")
+    name = models.CharField(max_length=100)
     service = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     date = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return f"{self.customername} - {self.service} - {self.amount}"
+        return f"{self.name} - {self.service} - {self.amount}"
+
+
+
+
+
+class EsewaTransaction(models.Model):
+    booking = models.ForeignKey(ManageBookings, on_delete=models.CASCADE, related_name="esewa_transactions")
+    transaction_uuid = models.CharField(max_length=100, unique=True)
+    product_code = models.CharField(max_length=50)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=20, default="Pending")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.transaction_uuid} - {self.status}"

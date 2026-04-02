@@ -17,6 +17,7 @@ from .models import (
     Staff,
     Attendance,
     ManagePayments,
+    EsewaTransaction,
 )
 
 
@@ -247,3 +248,13 @@ class ManagePaymentsSerializer(serializers.ModelSerializer):
     class Meta:
         model = ManagePayments
         fields = "__all__"
+
+
+
+
+
+class EsewaTransactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EsewaTransaction
+        fields = "__all__"
+        read_only_fields = ["created_at"]

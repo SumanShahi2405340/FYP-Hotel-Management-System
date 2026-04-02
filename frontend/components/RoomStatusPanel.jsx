@@ -1,0 +1,703 @@
+"use client";
+import React, { useState, useEffect } from "react";
+import api from "@/utils/api";
+import {
+  FaBed, FaFilter, FaDoorOpen, FaDoorClosed, FaHotel,
+  FaWifi, FaSnowflake, FaTv, FaCoffee, FaImage, FaTimes,
+  FaChevronLeft, FaChevronRight, FaPause, FaPlay, FaPlus,
+  FaCalendarAlt, FaUser, FaEnvelope, FaPhone, FaHashtag
+} from "react-icons/fa";
+
+// ── Helper: format for datetime-local input (YYYY-MM-DDTHH:mm) ────────────────
+const toDateTimeLocal = (dateString) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  const pad  = (n) => n.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+// ── compute occupancy purely from checkin/checkout datetimes ───────────
+const computeIsOccupied = (checkin, checkout) => {
+  if (!checkin) return false;
+  const now      = new Date();
+  const checkIn  = new Date(checkin);
+  const checkOut = checkout ? new Date(checkout) : null;
+
+  if (checkOut && now >= checkOut) return false;
+  if (now >= checkIn)              return true;
+  if (now < checkIn)               return true;
+  return false;
+};
+
+export default function RoomStatusPanel() {
+  const [roomsData,         setRoomsData]         = useState(null);
+  const [roomFilter,        setRoomFilter]        = useState("all");
+  const [bookings,          setBookings]          = useState([]);
+  const [loading,           setLoading]           = useState(true);
+  const [selectedRoom,      setSelectedRoom]      = useState(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isAutoPlaying,     setIsAutoPlaying]     = useState(true);
+  const [showBookingForm,   setShowBookingForm]   = useState(false);
+  const [bookingData,       setBookingData]       = useState({
+    name: "", email: "", contact: "", days: "", checkin: "", checkout: "",
+  });
+  const [submitting, setSubmitting] = useState(false);
+
+  // ── Auto-slide for modal carousel ──────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedRoom || !isAutoPlaying) return;
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prev) =>
+        prev === selectedRoom.images.length - 1 ? 0 : prev + 1
+      );
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [selectedRoom, isAutoPlaying]);
+
+  // Reset carousel index when a new room is opened
+  useEffect(() => {
+    setCurrentImageIndex(0);
+    setIsAutoPlaying(true);
+  }, [selectedRoom]);
+
+  // ── Fetch data ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [invRes, priceRes, bookRes] = await Promise.all([
+          api.get("/api/room-inventory/"),
+          api.get("/api/room-price/"),
+          api.get("/api/manage-bookings/"),
+        ]);
+
+        const inventory    = invRes.data;
+        const pricesData   = priceRes.data;
+        const bookingsData = bookRes.data;
+
+        setBookings(bookingsData);
+
+        const roomList = [];
+        const pushRooms = (count, type, price, startNum) => {
+          for (let i = 0; i < count; i++) {
+            const roomNumber = startNum + i;
+            roomList.push({
+              number:      roomNumber,
+              type,
+              price,
+              facilities:  getFacilitiesByType(type),
+              images:      getHotelImages(type),
+              description: getRoomDescription(type),
+            });
+          }
+        };
+
+        pushRooms(inventory.normal_rooms, "Normal", pricesData.normal_price, 101);
+        pushRooms(inventory.deluxe_rooms, "Deluxe", pricesData.deluxe_price, 201);
+        pushRooms(inventory.suite_rooms,  "Suite",  pricesData.suite_price,  301);
+
+        setRoomsData({ inventory, prices: pricesData, rooms: roomList });
+        setLoading(false);
+      } catch (err) {
+        console.error("Error fetching rooms data", err);
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // ── Static helpers ──────────────────────────────────────────────────────────
+  const getFacilitiesByType = (type) => {
+    const base = ["WiFi", "Air Conditioning", "Flat-screen TV", "Mini Bar"];
+    if (type === "Deluxe") return [...base, "Bathtub", "City View", "Work Desk"];
+    if (type === "Suite")  return [...base, "Jacuzzi", "Sea View", "Kitchenette", "Private Balcony"];
+    return base;
+  };
+
+  const getRoomDescription = (type) => {
+    if (type === "Normal") return "Comfortable room with modern amenities, perfect for business travelers.";
+    if (type === "Deluxe") return "Spacious deluxe room with premium furnishings and a stunning city view.";
+    return "Luxury suite with separate living area, jacuzzi, and breathtaking sea view.";
+  };
+
+  const getHotelImages = (type) => {
+    const imgs = {
+      Normal: [
+        "https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&h=600&fit=crop",
+      ],
+      Deluxe: [
+        "https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&h=600&fit=crop",
+      ],
+      Suite: [
+        "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&h=600&fit=crop",
+      ],
+    };
+    return imgs[type] || imgs.Normal;
+  };
+
+  // ── datetime-based occupancy lookup (NO GUEST NAMES) ─────────────────────────────────
+  const getRoomOccupancyInfo = (roomNumber) => {
+    const booking = bookings.find((b) => {
+      if (!b.room) return false;
+      const match = b.room.match(/\d+/);
+      return match && parseInt(match[0]) === roomNumber;
+    });
+    if (!booking) return { occupied: false, booking: null };
+    const occupied = computeIsOccupied(booking.checkin, booking.checkout);
+    return { occupied, booking: occupied ? booking : null };
+  };
+
+  // ── Book room handler ──────────────────────────────────────────────────────
+  const handleBookNow = async () => {
+    if (!bookingData.name || !bookingData.email || !bookingData.contact ||
+        !bookingData.days  || !bookingData.checkin || !bookingData.checkout) {
+      alert("Please fill in all fields");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await api.post("/api/manage-bookings/", {
+        name:     bookingData.name,
+        email:    bookingData.email,
+        contact:  bookingData.contact,
+        room:     `${selectedRoom.number} / ${selectedRoom.type}`,
+        days:     Number(bookingData.days),
+        checkin:  bookingData.checkin  ? new Date(bookingData.checkin).toISOString()  : null,
+        checkout: bookingData.checkout ? new Date(bookingData.checkout).toISOString() : null,
+        status:   "Booked",
+      });
+
+      setBookings([...bookings, res.data]);
+      alert(`Room ${selectedRoom.number} booked successfully!`);
+      setShowBookingForm(false);
+      setSelectedRoom(null);
+      setBookingData({ name: "", email: "", contact: "", days: "", checkin: "", checkout: "" });
+    } catch (err) {
+      console.error("Error booking room", err);
+      alert("Failed to book room. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Room grid ──────────────────────────────────────────────────────────────
+  const renderFilteredRooms = () => {
+    if (!roomsData) return null;
+    let roomList = roomsData.rooms;
+    if (roomFilter !== "all") {
+      roomList = roomList.filter((r) => r.type.toLowerCase() === roomFilter);
+    }
+
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 mt-6">
+        {roomList.map((room) => {
+          const { occupied, booking: activeBooking } = getRoomOccupancyInfo(room.number);
+          const status = occupied ? "Occupied" : "Available";
+
+          return (
+            <div
+              key={room.number}
+              className={`relative overflow-hidden rounded-2xl border-2 transition-all duration-300 hover:shadow-xl hover:scale-105 cursor-pointer ${
+                status === "Available"
+                  ? "bg-gradient-to-br from-green-50 to-emerald-50 border-green-300 hover:border-green-500"
+                  : "bg-gradient-to-br from-red-50 to-rose-50 border-red-300 hover:border-red-500"
+              }`}
+            >
+              <div className="p-5" onClick={() => setSelectedRoom({ ...room, status, activeBooking })}>
+
+                {/* Icon + status badge */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className={`p-3 rounded-xl ${status === "Available" ? "bg-green-100" : "bg-red-100"}`}>
+                    <FaBed className={`text-2xl ${status === "Available" ? "text-green-600" : "text-red-600"}`} />
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    status === "Available" ? "bg-green-500 text-white" : "bg-red-500 text-white"
+                  }`}>
+                    <span className="flex items-center gap-1">
+                      {status === "Available"
+                        ? <><FaDoorOpen  className="text-xs" /> Available</>
+                        : <><FaDoorClosed className="text-xs" /> Occupied</>}
+                    </span>
+                  </div>
+                </div>
+
+                <h3 className="text-2xl font-bold text-gray-800 mb-2">Room {room.number}</h3>
+
+                <div className="space-y-2">
+                  {/* Room type */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Room Type:</span>
+                    <span className={`font-semibold px-2 py-1 rounded ${
+                      room.type === "Normal" ? "bg-blue-100 text-blue-700" :
+                      room.type === "Deluxe" ? "bg-purple-100 text-purple-700" :
+                                               "bg-amber-100 text-amber-700"
+                    }`}>
+                      {room.type}
+                    </span>
+                  </div>
+
+                  {/* Price */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Price per Night:</span>
+                    <span className="font-bold text-blue-600">${Number(room.price).toFixed(2)}</span>
+                  </div>
+
+                  {/* Occupied info - NO GUEST NAME DISPLAYED */}
+                  {status !== "Available" && (
+                    <div className="mt-3 pt-3 border-t border-gray-200 space-y-1">
+                      <p className="text-xs text-gray-500">Currently occupied</p>
+                      {activeBooking?.checkout && (
+                        <p className="text-xs text-gray-500">
+                          Check-out:{" "}
+                          <span className="font-medium text-gray-700">
+                            {new Date(activeBooking.checkout).toLocaleString("en-US", {
+                              month: "2-digit", day: "2-digit", year: "numeric",
+                              hour: "numeric", minute: "2-digit", hour12: true,
+                            })}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick-book button */}
+              {status === "Available" && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedRoom({ ...room, status, activeBooking: null });
+                    setShowBookingForm(true);
+                  }}
+                  className="absolute bottom-3 right-3 bg-green-500 hover:bg-green-600 text-white rounded-full p-2 transition-all duration-200 shadow-lg hover:scale-110"
+                  title="Book Now"
+                >
+                  <FaPlus className="text-xs" />
+                </button>
+              )}
+
+              {/* Bottom colour strip */}
+              <div className={`absolute bottom-0 left-0 right-0 h-1 ${
+                status === "Available"
+                  ? "bg-gradient-to-r from-green-500 to-emerald-500"
+                  : "bg-gradient-to-r from-red-500   to-rose-500"
+              }`} />
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // ── Loading ────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4" />
+          <p className="text-gray-400">Loading room status...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const totalRooms     = roomsData?.rooms.length || 0;
+  const occupiedRooms  = roomsData?.rooms.filter((r) => getRoomOccupancyInfo(r.number).occupied).length || 0;
+  const availableRooms = totalRooms - occupiedRooms;
+  const occupancyRate  = totalRooms > 0 ? ((occupiedRooms / totalRooms) * 100).toFixed(1) : 0;
+
+  return (
+    <>
+      <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-6">
+
+        {/* Header */}
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+            <FaHotel className="text-purple-400" />
+            Room Status Overview
+          </h2>
+          <p className="text-gray-400">Real-time occupancy based on check-in / check-out times</p>
+        </div>
+
+        {/* Stat cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-xl p-4 border border-blue-500/30">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-blue-300 mb-1">Total Rooms</p>
+                <p className="text-3xl font-bold text-white">{totalRooms}</p>
+              </div>
+              <FaBed className="text-3xl text-blue-400" />
+            </div>
+          </div>
+          <div className="bg-gradient-to-br from-green-500/20 to-green-600/20 rounded-xl p-4 border border-green-500/30">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-green-300 mb-1">Available</p>
+                <p className="text-3xl font-bold text-white">{availableRooms}</p>
+              </div>
+              <FaDoorOpen className="text-3xl text-green-400" />
+            </div>
+          </div>
+          <div className="bg-gradient-to-br from-red-500/20 to-red-600/20 rounded-xl p-4 border border-red-500/30">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-red-300 mb-1">Occupied</p>
+                <p className="text-3xl font-bold text-white">{occupiedRooms}</p>
+              </div>
+              <FaDoorClosed className="text-3xl text-red-400" />
+            </div>
+          </div>
+        </div>
+
+        {/* Filter */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <FaFilter className="text-purple-400" />
+            <span className="text-sm text-gray-300">Filter by room type:</span>
+          </div>
+          <div className="flex gap-3 flex-wrap">
+            {["all", "normal", "deluxe", "suite"].map((type) => (
+              <button
+                key={type}
+                onClick={() => setRoomFilter(type)}
+                className={`px-4 py-2 rounded-lg transition-all duration-200 ${
+                  roomFilter === type
+                    ? "bg-purple-500 text-white"
+                    : "bg-white/10 text-gray-300 hover:bg-white/20"
+                }`}
+              >
+                {type === "all" ? "All Rooms" : type.charAt(0).toUpperCase() + type.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Room grid */}
+        {renderFilteredRooms()}
+
+        {/* Occupancy bar */}
+        <div className="mt-8">
+          <div className="flex justify-between mb-2">
+            <span className="text-sm text-gray-300">Occupancy Rate</span>
+            <span className="text-sm font-semibold text-white">{occupancyRate}%</span>
+          </div>
+          <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full transition-all duration-500"
+              style={{ width: `${occupancyRate}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════
+          ROOM DETAILS MODAL - NO GUEST NAMES
+      ══════════════════════════════════════════════ */}
+      {selectedRoom && !showBookingForm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fadeInUp"
+          onClick={() => setSelectedRoom(null)}
+        >
+          <div
+            className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto shadow-2xl border border-white/20"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Carousel */}
+            <div className="relative h-72 md:h-96">
+              <img
+                src={selectedRoom.images[currentImageIndex]}
+                alt={`Room ${selectedRoom.number}`}
+                className="w-full h-full object-cover rounded-t-2xl"
+                onError={(e) => {
+                  e.target.src = "https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=800&h=600&fit=crop";
+                }}
+              />
+              <button
+                onClick={() => setSelectedRoom(null)}
+                className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition"
+              >
+                <FaTimes />
+              </button>
+
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-black/50 rounded-full px-3 py-1">
+                <button
+                  onClick={() => setCurrentImageIndex((p) => (p === 0 ? selectedRoom.images.length - 1 : p - 1))}
+                  className="text-white hover:text-purple-400 transition p-1"
+                >
+                  <FaChevronLeft />
+                </button>
+                <span className="text-white text-sm px-2">
+                  {currentImageIndex + 1} / {selectedRoom.images.length}
+                </span>
+                <button
+                  onClick={() => setCurrentImageIndex((p) => (p === selectedRoom.images.length - 1 ? 0 : p + 1))}
+                  className="text-white hover:text-purple-400 transition p-1"
+                >
+                  <FaChevronRight />
+                </button>
+                <button
+                  onClick={() => setIsAutoPlaying(!isAutoPlaying)}
+                  className="text-white hover:text-purple-400 transition p-1"
+                >
+                  {isAutoPlaying ? <FaPause /> : <FaPlay />}
+                </button>
+              </div>
+
+              <div className="absolute top-4 left-4">
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                  selectedRoom.status === "Available" ? "bg-green-500 text-white" : "bg-red-500 text-white"
+                }`}>
+                  {selectedRoom.status}
+                </span>
+              </div>
+            </div>
+
+            {/* Details */}
+            <div className="p-6">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-2xl font-bold text-white">Room {selectedRoom.number}</h3>
+                  <p className="text-gray-300 mt-1">{selectedRoom.type} Room</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-400">Price per night</p>
+                  <p className="text-2xl font-bold text-purple-400">
+                    ${Number(selectedRoom.price).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-gray-300 mb-4">{selectedRoom.description}</p>
+
+              {/* Facilities */}
+              <div className="mb-4">
+                <h4 className="text-white font-semibold mb-2">Amenities &amp; Facilities</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {selectedRoom.facilities.map((facility, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-gray-300 text-sm">
+                      {facility === "WiFi"             && <FaWifi      className="text-purple-400" />}
+                      {facility === "Air Conditioning" && <FaSnowflake className="text-purple-400" />}
+                      {facility === "Flat-screen TV"   && <FaTv        className="text-purple-400" />}
+                      {facility === "Mini Bar"         && <FaCoffee    className="text-purple-400" />}
+                      {!["WiFi","Air Conditioning","Flat-screen TV","Mini Bar"].includes(facility) && (
+                        <FaImage className="text-purple-400" />
+                      )}
+                      <span>{facility}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Occupied: show only checkout info - NO GUEST NAME */}
+              {selectedRoom.status !== "Available" && selectedRoom.activeBooking && (
+                <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-lg p-3 space-y-1">
+                  <p className="text-red-400 text-sm font-semibold">Currently Occupied</p>
+                  {selectedRoom.activeBooking.checkin && (
+                    <p className="text-gray-300 text-sm">
+                      Check-in:{" "}
+                      <span className="text-white">
+                        {new Date(selectedRoom.activeBooking.checkin).toLocaleString("en-US", {
+                          month: "2-digit", day: "2-digit", year: "numeric",
+                          hour: "numeric", minute: "2-digit", hour12: true,
+                        })}
+                      </span>
+                    </p>
+                  )}
+                  {selectedRoom.activeBooking.checkout && (
+                    <p className="text-gray-300 text-sm">
+                      Check-out:{" "}
+                      <span className="text-white">
+                        {new Date(selectedRoom.activeBooking.checkout).toLocaleString("en-US", {
+                          month: "2-digit", day: "2-digit", year: "numeric",
+                          hour: "numeric", minute: "2-digit", hour12: true,
+                        })}
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {selectedRoom.status === "Available" ? (
+                <button
+                  onClick={() => setShowBookingForm(true)}
+                  className="w-full mt-4 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-semibold hover:opacity-90 transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <FaPlus /> Book This Room
+                </button>
+              ) : (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
+                  This room is currently occupied and unavailable for new bookings.
+                </div>
+              )}
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setSelectedRoom(null)}
+                  className="px-6 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════
+          BOOKING FORM MODAL
+      ══════════════════════════════════════════════ */}
+      {showBookingForm && selectedRoom && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fadeInUp"
+          onClick={() => { setShowBookingForm(false); setSelectedRoom(null); }}
+        >
+          <div
+            className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl max-w-md w-full mx-4 shadow-2xl border border-white/20"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-white">Book Room {selectedRoom.number}</h3>
+                <button
+                  onClick={() => { setShowBookingForm(false); setSelectedRoom(null); }}
+                  className="p-1 hover:bg-white/10 rounded-lg transition"
+                >
+                  <FaTimes className="text-gray-400" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+
+                {/* Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Full Name</label>
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                    <FaUser className="text-purple-400 text-sm" />
+                    <input type="text" placeholder="Enter customer name"
+                      value={bookingData.name}
+                      onChange={(e) => setBookingData({ ...bookingData, name: e.target.value })}
+                      className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                    <FaEnvelope className="text-purple-400 text-sm" />
+                    <input type="email" placeholder="customer@example.com"
+                      value={bookingData.email}
+                      onChange={(e) => setBookingData({ ...bookingData, email: e.target.value })}
+                      className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Contact */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Contact Number</label>
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                    <FaPhone className="text-purple-400 text-sm" />
+                    <input type="text" placeholder="+977 98XXXXXXXX"
+                      value={bookingData.contact}
+                      onChange={(e) => setBookingData({ ...bookingData, contact: e.target.value })}
+                      className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Days */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Number of Days</label>
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                    <FaHashtag className="text-purple-400 text-sm" />
+                    <input type="number" placeholder="Enter stay duration"
+                      value={bookingData.days}
+                      onChange={(e) => setBookingData({ ...bookingData, days: e.target.value })}
+                      className="flex-1 bg-transparent text-white placeholder-gray-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Check-in */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Check-in Date &amp; Time</label>
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                    <FaCalendarAlt className="text-purple-400 text-sm" />
+                    <input type="datetime-local" value={bookingData.checkin}
+                      onChange={(e) => setBookingData({ ...bookingData, checkin: e.target.value })}
+                      className="flex-1 bg-transparent text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Check-out */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Check-out Date &amp; Time</label>
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                    <FaCalendarAlt className="text-purple-400 text-sm" />
+                    <input type="datetime-local" value={bookingData.checkout}
+                      onChange={(e) => setBookingData({ ...bookingData, checkout: e.target.value })}
+                      className="flex-1 bg-transparent text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Price summary */}
+                <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3">
+                  <p className="text-sm text-gray-300">
+                    Room {selectedRoom.number} — {selectedRoom.type}
+                  </p>
+                  <p className="text-lg font-bold text-purple-400">
+                    ${Number(selectedRoom.price).toFixed(2)} / night
+                  </p>
+                  {bookingData.days && !isNaN(parseInt(bookingData.days)) && (
+                    <p className="text-sm text-gray-300 mt-1">
+                      Total: ${(Number(selectedRoom.price) * parseInt(bookingData.days)).toFixed(2)}
+                    </p>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => { setShowBookingForm(false); setSelectedRoom(null); }}
+                    className="flex-1 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBookNow}
+                    disabled={submitting}
+                    className="flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold hover:opacity-90 transition disabled:opacity-50"
+                  >
+                    {submitting ? "Booking..." : "Confirm Booking"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeInUp { animation: fadeInUp 0.3s ease forwards; }
+      `}</style>
+    </>
+  );
+}

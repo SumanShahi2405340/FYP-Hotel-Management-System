@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@geist-ui/react": "^2.2.5",
+    "@google/generative-ai": "^0.24.1",
     "@heroicons/react": "^2.2.0",
     "axios": "^1.13.2",
     "chart.js": "^4.5.1",
@@ -31,7 +32,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.0.8",
     "init": "^0.1.2",
-    "npx": "^3.0.0",
+    "npx": "^10.2.2",
     "tailwindcss": "^3.4.3",
     "typescript": "^5"
   }

@@ -161,3 +161,15 @@ EMAIL_HOST_USER = 'sumanjungshahi100@gmail.com'
 EMAIL_HOST_PASSWORD = 'tbaielqrmsytgfij'  # your Gmail app password
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 APPEND_SLASH = True # default is True
+
+
+
+
+
+
+
+
+# Esewa Integration
+ESEWA_MERCHANT_ID = "EPAYTEST"
+ESEWA_SECRET_KEY = "8gBm/:&EnhH.1/q"
+ESEWA_BASE_URL = "https://uat.esewa.com.np"  # use production URL later

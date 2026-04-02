@@ -1,5 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from hotel.payments import esewa_views
 # from . import views
 from .views import (
     # Auth-related views
@@ -59,7 +60,7 @@ from .views import (
     CommissionReportListCreateView,
     ManageBookingsViewSet, 
     AttendanceViewSet,
-    ManagePaymentsViewSet,  
+    ManagePaymentsViewSet,
       
   
 )
@@ -147,6 +148,12 @@ urlpatterns = [
     path("promotions/<int:pk>/", PromotionDetailView.as_view(), name="promotion-detail"),
 
     path("commission-reports/", CommissionReportListCreateView.as_view(), name="commission-reports"),
+
+    # Esewa payment endpoints
+    path('payments/esewa/initiate/', esewa_views.esewa_initiate, name='esewa-initiate'),
+    path('payments/esewa/verify/', esewa_views.esewa_verify, name='esewa-verify'),
+    path('payments/<int:booking_id>/esewa/verify/', esewa_views.esewa_redirect_success, name='esewa-redirect-success'),
+
 
 
 

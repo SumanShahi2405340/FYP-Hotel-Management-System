@@ -21,8 +21,10 @@ from .models import RoomInventory, RoomPrice, ManageMaintenanceRequest, Receptio
 from .models import ManagePayments
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.hashers import make_password
-from django.contrib.auth import authenticate, login, get_user_model
+from django.contrib.auth import get_user_model
 from rest_framework.decorators import api_view, permission_classes
+from django.shortcuts import get_object_or_404
+
 # from rest_framework_simplejwt.tokens import RefreshToken
 import uuid
 from .serializers import (
@@ -1062,6 +1064,8 @@ class CommissionReportListCreateView(generics.ListCreateAPIView):
 
 
 
+
+
 class ManageBookingsViewSet(viewsets.ModelViewSet):
     queryset = ManageBookings.objects.all()
     serializer_class = ManageBookingsSerializer
@@ -1090,9 +1094,17 @@ class ManageBookingsViewSet(viewsets.ModelViewSet):
             booking.save()
         return super().retrieve(request, *args, **kwargs)
 
+    #  Custom action: get payments for a booking
+    @action(detail=True, methods=["get"])
+    def payments(self, request, pk=None):
+        booking = get_object_or_404(ManageBookings, pk=pk)
+        payments = ManagePayments.objects.filter(booking=booking)
+        serializer = ManagePaymentsSerializer(payments, many=True)
+        return Response(serializer.data)
 
 
 
 class ManagePaymentsViewSet(viewsets.ModelViewSet):
-    queryset = ManagePayments.objects.all().order_by("-date")
+    queryset = ManagePayments.objects.all()
     serializer_class = ManagePaymentsSerializer
+

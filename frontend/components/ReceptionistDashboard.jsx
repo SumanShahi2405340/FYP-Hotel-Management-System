@@ -1,207 +1,544 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { FaCog } from "react-icons/fa";
+import {
+  FaCog, FaWrench, FaChartLine, FaBed,
+  FaCalendarCheck, FaSignOutAlt, FaChevronDown, FaHotel, FaBuilding, FaTachometerAlt,
+  FaUserPlus, FaList, FaUsers, FaUserCircle, FaBell, FaBook, FaPlus, FaUserFriends,
+  FaDoorOpen, FaClipboardList, FaCheckCircle, FaSpinner, FaMoneyBillWave
+} from "react-icons/fa";
 import { useRouter } from "next/navigation";
-import recepApi from "@/utils/recep";   // axios instance
-import TwoButtons from "@/components/TwoButtons"; // import your bookings component
+import recepApi from "@/utils/recep";
+import api from "@/utils/api";
+import ManagePaymentsDashboard from "@/components/ManagePaymentsDashboard";
+import EarningReports from "@/components/EarningReports";
+import RoomStatusPanel from "@/components/RoomStatusPanel";
 
-export default function ReceptionistDashboard() {
-  const [menuOpen, setMenuOpen] = useState(true);
-  const [showLogoutPopup, setShowLogoutPopup] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(true);
+const ReceptionistDashboard = () => {
+  const [activePanel, setActivePanel] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [staffSubmenuOpen, setStaffSubmenuOpen] = useState(false);
+  const [bookingsSubmenuOpen, setBookingsSubmenuOpen] = useState(false);
   const [hotel, setHotel] = useState(null);
-  const [activePanel, setActivePanel] = useState(null); // NEW state for panel switching
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [stats, setStats] = useState({
+    availableRooms: 0,
+    todayBookings: 0,
+    todayCheckIns: 0,
+    todayCheckOuts: 0,
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
   const router = useRouter();
 
+  // Helper: format date to YYYY-MM-DD for comparison
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "";
+    return new Date(dateStr).toISOString().split("T")[0];
+  };
+
+  // Helper to compute booking status
+  const computeBookingStatus = (checkin, checkout) => {
+    if (!checkin || !checkout) return "Booked";
+    const now = new Date();
+    const checkIn = new Date(checkin);
+    const checkOut = new Date(checkout);
+    if (now < checkIn) return "Booked";
+    if (now >= checkIn && now < checkOut) return "Checked In";
+    return "Checked Out";
+  };
+
+  // Fetch hotel info, bookings, and room inventory
   useEffect(() => {
-    const fetchHotelInfo = async () => {
+    const fetchDashboardData = async () => {
       try {
-        const res = await recepApi.get("/api/hotel/receptionist/");
-        if (res.status === 200) {
-          setHotel({ hotel_id: res.data.hotel_id, hotel_name: res.data.hotel_name });
-        }
+        // Fetch hotel info
+        const hotelRes = await recepApi.get("/api/hotel/receptionist/");
+        const hotelData = hotelRes.data;
+        
+        // Fetch room inventory to get total rooms
+        const inventoryRes = await api.get("/api/room-inventory/");
+        const inventory = inventoryRes.data;
+        
+        // Calculate total rooms from inventory
+        const totalRooms = (inventory.normal_rooms || 0) + 
+                          (inventory.deluxe_rooms || 0) + 
+                          (inventory.suite_rooms || 0);
+        
+        setHotel({
+          hotel_id: hotelData.hotel_id,
+          hotel_name: hotelData.hotel_name,
+          total_rooms: totalRooms,
+        });
+
+        // Fetch all bookings
+        const bookingsRes = await api.get("/api/manage-bookings/");
+        const bookings = bookingsRes.data;
+        
+        // Today's date in YYYY-MM-DD
+        const today = new Date().toISOString().split("T")[0];
+
+        // Compute today's check-ins, check-outs, and today's bookings
+        let checkIns = 0;
+        let checkOuts = 0;
+        let todayBookings = 0;
+
+        bookings.forEach((booking) => {
+          const checkinDate = formatDate(booking.checkin);
+          const checkoutDate = formatDate(booking.checkout);
+          
+          if (checkinDate === today) {
+            checkIns++;
+          }
+          if (checkoutDate === today) {
+            checkOuts++;
+          }
+          // Count all bookings created today (based on booking creation date or check-in date)
+          const bookingCreatedDate = formatDate(booking.created_at || booking.checkin);
+          if (bookingCreatedDate === today) {
+            todayBookings++;
+          }
+        });
+
+        // Calculate available rooms (total rooms - occupied rooms)
+        // Occupied rooms = rooms with "Checked In" status
+        const occupiedRooms = bookings.filter(booking => 
+          computeBookingStatus(booking.checkin, booking.checkout) === "Checked In"
+        ).length;
+        
+        const availableRooms = totalRooms - occupiedRooms;
+
+        setStats({
+          availableRooms: availableRooms >= 0 ? availableRooms : 0,
+          todayBookings: todayBookings,
+          todayCheckIns: checkIns,
+          todayCheckOuts: checkOuts,
+        });
       } catch (err) {
-        console.error("Failed to fetch hotel info", err);
+        console.error("Failed to fetch dashboard data", err);
+        // Set default stats on error
+        setStats({
+          availableRooms: 0,
+          todayBookings: 0,
+          todayCheckIns: 0,
+          todayCheckOuts: 0,
+        });
+      } finally {
+        setStatsLoading(false);
       }
     };
 
-    fetchHotelInfo();
+    fetchDashboardData();
   }, []);
 
+  const handleLogout = () => {
+    localStorage.removeItem("recepToken");
+    localStorage.removeItem("recepRefreshToken");
+    router.push("http://localhost:3000/role");
+  };
+
+  const menuItems = [
+    {
+      id: "maintenance",
+      label: "Send Maintenance Requests",
+      icon: FaWrench,
+      color: "from-yellow-500 to-amber-500",
+      route: "/receptionist/send-view-maintenancerequests",
+    },
+  ];
+
+  const quickActions = [
+    { id: "roomStatus", label: "Room Status", icon: FaBed, color: "bg-purple-500" },
+    { id: "earnings", label: "Earning Reports", icon: FaChartLine, color: "bg-green-500" },
+  ];
+
+  const navigateToStaff = (tab) => {
+    if (tab === "add") router.push("/receptionist/add-staff");
+    else router.push(`/receptionist/manage-staffnnattendance?tab=${tab}`);
+  };
+
+  const navigateToBookings = (type) => {
+    if (type === "add") {
+      router.push("/receptionist/add-bookings");
+    } else if (type === "guest-lists") {
+      router.push("/receptionist/guest-lists");
+    }
+  };
+
+  const handleManagePaymentsDashboard = () => {
+    router.push("/receptionist/managepayments-dashboard");
+  };
+
   return (
-    <div className="min-h-screen flex">
-      {/* Sidebar */}
-      {menuOpen && (
-        <div className="fixed top-0 left-0 h-screen w-72 bg-gradient-to-b from-indigo-900/90 via-gray-900/80 to-black/70 backdrop-blur-md text-white flex flex-col justify-start p-6 z-20 shadow-2xl border-r border-gray-700/40">
-          
-          {/* Hotel Profile */}
-          <div className="flex flex-col items-center mb-4">
-            <button
-              onClick={() => hotel && router.push(`/owner/hotel-profile/${hotel.hotel_id}`)}
-              className="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-600 shadow hover:shadow-lg transition"
-            >
-              <img src="/admindash1.jpg" alt="Hotel Profile" className="w-full h-full object-cover" />
-            </button>
-            {hotel && (
-              <>
-                <span className="mt-2 text-sm font-medium text-red-700">Hotel ID: {hotel.hotel_id}</span>
-                <span className="mt-1 text-sm font-medium text-green-400">{hotel.hotel_name}</span>
-              </>
-            )}
-          </div>
+    <>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; }
 
-          <div className="flex justify-center mb-4">
-            <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-green-400">
-              CloudInn
-            </h2>
-          </div>
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateX(-20px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
 
-          {/* Sidebar buttons */}
-          <button
-            onClick={() => router.push("/receptionist/manage-staffnnattendance")}
-            className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
-          >
-            <span className="text-white font-bold">Manage Staff & Attendance</span>
-          </button>
+        .animate-fadeInUp { animation: fadeInUp 0.5s ease forwards; }
+        .animate-slideIn  { animation: slideIn  0.3s ease forwards; }
 
-          <button
-            onClick={() => router.push("/receptionist/send-view-maintenancerequests")}
-            className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap"
-          >
-            <span className="text-white font-bold">Send Maintenance Requests</span>
-          </button>
+        .hover-scale { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .hover-scale:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2); }
+      `}</style>
 
-          {/* Settings */}
-          <button
-            onClick={() => setSettingsOpen(!settingsOpen)}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition w-full text-left mt-2"
-          >
-            <FaCog className="text-white" />
-            <span className="text-white font-semibold">Settings</span>
-          </button>
+      <div className="min-h-screen flex bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
 
-          {settingsOpen && (
-            <div className="flex flex-col gap-2 ml-4 mt-2">
-              <button className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left">
-                Notifications & Setting
-              </button>
-              <button className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm w-full text-left whitespace-nowrap">
-                View Promotion/Discount in N&S
-              </button>
+        {/* Sidebar */}
+        <div className={`fixed top-0 left-0 h-screen w-80 bg-gradient-to-b from-gray-900/95 via-gray-800/95 to-gray-900/95 backdrop-blur-xl text-white flex flex-col z-20 transform transition-all duration-300 shadow-2xl border-r border-white/10 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+          {/* Hotel profile */}
+          <div className="relative px-6 py-8 border-b border-white/10">
+            <div className="flex flex-col items-center">
+              <div className="relative group cursor-pointer" onClick={() => hotel && router.push(`/owner/hotel-profile/${hotel.hotel_id}`)}>
+                <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500 p-0.5">
+                  <div className="w-full h-full rounded-2xl overflow-hidden bg-gray-800">
+                    <img src="/admindash1.jpg" alt="Hotel Profile" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                  </div>
+                </div>
+                <div className="absolute -bottom-2 -right-2 bg-green-500 rounded-full p-1.5 border-2 border-gray-900">
+                  <FaUserCircle className="text-white text-xs" />
+                </div>
+              </div>
+              {hotel && (
+                <div className="mt-4 text-center">
+                  <h3 className="font-bold text-lg text-white">{hotel.hotel_name}</h3>
+                  <p className="text-sm text-gray-400 mt-1">ID: {hotel.hotel_id}</p>
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
-          {/* Logout button */}
-          <div className="mt-auto flex justify-center">
+          {/* Logo */}
+          <div className="px-6 py-4 border-b border-white/10">
+            <div className="flex items-center justify-center gap-2">
+              <FaHotel className="text-3xl text-purple-400" />
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">
+                CloudInn
+              </h2>
+            </div>
+            <p className="text-xs text-center text-gray-500 mt-1">Receptionist Portal</p>
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-2">
+            {/* Manage Staff dropdown */}
+            <div>
+              <button
+                onClick={() => setStaffSubmenuOpen(!staffSubmenuOpen)}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all duration-200 flex items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-3">
+                  <FaUsers className="text-lg text-purple-400" />
+                  <span className="text-sm font-medium text-gray-300">Manage Staffs</span>
+                </div>
+                <FaChevronDown className={`text-xs text-gray-500 transition-transform duration-200 ${staffSubmenuOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {staffSubmenuOpen && (
+                <div className="ml-8 mt-2 space-y-1 animate-slideIn">
+                  <button onClick={() => navigateToStaff("add")}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition flex items-center gap-2">
+                    <FaUserPlus className="text-xs" /> Add Staffs
+                  </button>
+                  <button onClick={() => navigateToStaff("view")}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition flex items-center gap-2">
+                    <FaList className="text-xs" /> Staffs List
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Manage Bookings dropdown */}
+            <div>
+              <button
+                onClick={() => setBookingsSubmenuOpen(!bookingsSubmenuOpen)}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all duration-200 flex items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-3">
+                  <FaBook className="text-lg text-purple-400" />
+                  <span className="text-sm font-medium text-gray-300">Manage Bookings</span>
+                </div>
+                <FaChevronDown className={`text-xs text-gray-500 transition-transform duration-200 ${bookingsSubmenuOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {bookingsSubmenuOpen && (
+                <div className="ml-8 mt-2 space-y-1 animate-slideIn">
+                  <button
+                    onClick={() => navigateToBookings("add")}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition flex items-center gap-2"
+                  >
+                    <FaPlus className="text-xs" />
+                    Add Bookings
+                  </button>
+                  <button
+                    onClick={() => navigateToBookings("guest-lists")}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition flex items-center gap-2"
+                  >
+                    <FaUserFriends className="text-xs" />
+                    Guests List
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Manage Payments Button - Redirects to separate page */}
             <button
-              onClick={() => setShowLogoutPopup(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              onClick={handleManagePaymentsDashboard}
+              className="group relative w-full px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all duration-200 flex items-center gap-3 overflow-hidden"
             >
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-cyan-500 opacity-0 group-hover:opacity-10 transition-opacity duration-200" />
+              <FaMoneyBillWave className="text-lg text-purple-400 group-hover:scale-110 transition-transform" />
+              <span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">Manage Payments</span>
+            </button>
+
+            {/* Manage Attendance */}
+            <button
+              onClick={() => navigateToStaff("attendance")}
+              className="group relative w-full px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all duration-200 flex items-center gap-3 overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 opacity-0 group-hover:opacity-10 transition-opacity duration-200" />
+              <FaCalendarCheck className="text-lg text-purple-400 group-hover:scale-110 transition-transform" />
+              <span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">Manage Attendance</span>
+            </button>
+
+            {/* Other menu items */}
+            {menuItems.map((item) => (
+              <button key={item.id} onClick={() => router.push(item.route)}
+                className="group relative w-full px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all duration-200 flex items-center gap-3 overflow-hidden">
+                <div className={`absolute inset-0 bg-gradient-to-r ${item.color} opacity-0 group-hover:opacity-10 transition-opacity duration-200`} />
+                <item.icon className="text-lg text-purple-400 group-hover:scale-110 transition-transform" />
+                <span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">{item.label}</span>
+              </button>
+            ))}
+
+            {/* Settings */}
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <button
+                onClick={() => setSettingsOpen(!settingsOpen)}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all duration-200 flex items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-3">
+                  <FaCog className="text-lg text-purple-400" />
+                  <span className="text-sm font-medium text-gray-300">Settings</span>
+                </div>
+                <FaChevronDown className={`text-xs text-gray-500 transition-transform duration-200 ${settingsOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {settingsOpen && (
+                <div className="ml-8 mt-2 space-y-1 animate-slideIn">
+                  <button onClick={() => router.push("/owner/owner-notification-setting?sidebar=true")}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition">
+                    Notifications & Setting
+                  </button>
+                  <button onClick={() => router.push("/owner/manage-promotionsdiscounts")}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition">
+                    View Promotion/Discount in N&S
+                  </button>
+                </div>
+              )}
+            </div>
+          </nav>
+
+          {/* Logout */}
+          <div className="p-6 border-t border-white/10">
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-red-500/20 to-red-600/20 hover:from-red-500/30 hover:to-red-600/30 border border-red-500/30 text-red-400 font-medium transition-all duration-200 flex items-center justify-center gap-2 group"
+            >
+              <FaSignOutAlt className="group-hover:translate-x-1 transition-transform" />
               Logout
             </button>
           </div>
         </div>
-      )}
 
-      {/* Main Content */}
-      <div
-        className={`flex-1 p-5 transition-all duration-300 ${menuOpen ? "ml-72" : "ml-0"}`}
-        style={{
-          backgroundImage: "url('/5.jpg')",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          minHeight: "100vh",
-        }}
-      >
-        {/* Top Heading */}
-        <div className="grid grid-cols-3 items-center mb-6">
-          <div className="flex justify-start">
-            <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="px-2 py-1 text-xs bg-purple-600 text-white rounded"
-            >
-              {menuOpen ? "Hide Menu" : "Show Menu"}
-            </button>
-          </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-lg shadow-lg p-4 max-w-4xl mx-auto">
-            <h1 className="text-3xl font-bold text-green-400 drop-shadow-lg text-center">
-              Receptionist Dashboard
-            </h1>
-          </div>
-          <div className="flex justify-end">
-            <div className="relative inline-block">
-              <button className="text-4xl text-purple-600 hover:text-purple-700 transition">
-                🔔
+        {/* Main Content */}
+        <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? "ml-80" : "ml-0"} min-h-screen`}>
+          {/* Header */}
+          <div className="sticky top-0 z-10 bg-gradient-to-r from-gray-900/95 to-gray-800/95 backdrop-blur-xl border-b border-white/10 px-8 py-4">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-all duration-200 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                {sidebarOpen ? "Hide Menu" : "Show Menu"}
               </button>
-              <span className="absolute top-0 right-0 translate-y-[-8px] bg-red-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                1
-              </span>
+
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => router.push("/owner/owner-notification-setting")}
+                  className="relative p-2 rounded-full bg-white/10 hover:bg-white/20 transition-all duration-200 group"
+                >
+                  <FaBell className="text-xl text-purple-400 group-hover:scale-110 transition-transform" />
+                  <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                </button>
+                <div className="h-8 w-px bg-white/20" />
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
+                    <span className="text-sm font-bold text-white">R</span>
+                  </div>
+                  <span className="text-sm text-gray-300 hidden md:block">Receptionist</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* NEW Buttons for panels */}
-        <div className="flex justify-center gap-4 mt-6">
-          <button
-            onClick={() => setActivePanel("bookings")}
-            className={`px-4 py-2 rounded-lg ${
-              activePanel === "bookings" ? "bg-blue-600 text-white" : "bg-gray-200"
-            }`}
-          >
-            Manage Bookings
-          </button>
-          <button
-            onClick={() => setActivePanel("earnings")}
-            className={`px-4 py-2 rounded-lg ${
-              activePanel === "earnings" ? "bg-blue-600 text-white" : "bg-gray-200"
-            }`}
-          >
-            Manage Earning Reports
-          </button>
-        </div>
-
-        {/* Panel Content */}
-        <div className="mt-6">
-          {activePanel === "bookings" && (
-            <TwoButtons/>
-          )}
-
-          {activePanel === "earnings" && (
-            <div className="p-6 bg-white/70 rounded-lg shadow">
-              <h3 className="text-lg font-bold mb-4">Manage Earning Report</h3>
-              <p className="text-gray-700">Earning report functionality will go here.</p>
+          {/* Dashboard body */}
+          <div className="p-8">
+            {/* Welcome */}
+            <div className="mb-8 animate-fadeInUp">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                Welcome, {hotel?.hotel_name || "Receptionist"}!
+              </h1>
+              <p className="text-gray-400 mt-2">Manage check-ins, check-outs, and daily operations.</p>
             </div>
-          )}
+
+            {/* Stats Cards - Available Rooms, Today's Bookings, Today's Check-in, Today's Check-out */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {[
+                { 
+                  label: "Available Rooms", 
+                  value: stats.availableRooms, 
+                  icon: FaDoorOpen, 
+                  color: "from-blue-500 to-cyan-500",
+                  subtitle: "Ready for check-in"
+                },
+                { 
+                  label: "Today's Bookings", 
+                  value: stats.todayBookings, 
+                  icon: FaBook, 
+                  color: "from-green-500 to-emerald-500",
+                  subtitle: "New reservations today"
+                },
+                { 
+                  label: "Today's Check-in", 
+                  value: stats.todayCheckIns, 
+                  icon: FaCalendarCheck, 
+                  color: "from-purple-500 to-pink-500",
+                  subtitle: "Expected arrivals"
+                },
+                { 
+                  label: "Today's Check-out", 
+                  value: stats.todayCheckOuts, 
+                  icon: FaSignOutAlt, 
+                  color: "from-orange-500 to-red-500",
+                  subtitle: "Expected departures"
+                },
+              ].map((stat, idx) => (
+                <div
+                  key={idx}
+                  className="relative overflow-hidden rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-6 hover-scale animate-fadeInUp"
+                  style={{ animationDelay: `${idx * 0.1}s` }}
+                >
+                  <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${stat.color} opacity-10 rounded-full -translate-y-1/2 translate-x-1/2`} />
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className={`p-3 rounded-xl bg-gradient-to-br ${stat.color} bg-opacity-20`}>
+                        <stat.icon className="text-2xl text-white" />
+                      </div>
+                      {statsLoading && (
+                        <div className="animate-pulse w-8 h-8 bg-white/10 rounded-full"></div>
+                      )}
+                    </div>
+                    {statsLoading ? (
+                      <div className="animate-pulse">
+                        <div className="h-8 w-20 bg-white/10 rounded mb-2"></div>
+                        <div className="h-4 w-24 bg-white/10 rounded"></div>
+                      </div>
+                    ) : (
+                      <>
+                        <h3 className="text-2xl font-bold text-white">{stat.value}</h3>
+                        <p className="text-sm text-gray-400 mt-1">{stat.label}</p>
+                        <p className="text-xs text-gray-500 mt-1">{stat.subtitle}</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                <FaTachometerAlt className="text-purple-400" /> Quick Actions
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {quickActions.map((action, idx) => (
+                  <button
+                    key={action.id}
+                    onClick={() => setActivePanel(action.id)}
+                    className="group relative overflow-hidden rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 p-4 transition-all duration-200 hover-scale animate-fadeInUp"
+                    style={{ animationDelay: `${idx * 0.05}s` }}
+                  >
+                    <div className={`absolute inset-0 bg-gradient-to-br ${action.color} opacity-0 group-hover:opacity-10 transition-opacity`} />
+                    <div className="relative z-10 flex flex-col items-center gap-2">
+                      <action.icon className="text-2xl text-purple-400 group-hover:scale-110 transition-transform" />
+                      <span className="text-xs text-gray-300 text-center group-hover:text-white transition-colors">
+                        {action.label}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Active Panel */}
+            {activePanel && (
+              <div className="animate-fadeInUp">
+                {activePanel === "roomStatus" && <RoomStatusPanel />}
+                {activePanel === "earnings" && <EarningReports />}
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!activePanel && (
+              <div className="text-center py-16 animate-fadeInUp">
+                <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
+                  <FaHotel className="text-4xl text-purple-400" />
+                </div>
+                <h3 className="text-xl font-semibold text-white mb-2">Welcome to CloudInn</h3>
+                <p className="text-gray-400">Select an option from the quick actions above to get started</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Logout Confirmation Modal */}
-      {showLogoutPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-80 text-center">
-            <h2 className="text-lg font-semibold mb-4">Do you really want to logout?</h2>
+      {/* Logout Modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeInUp">
+          <div className="bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl p-8 w-96 text-center border border-white/10 shadow-2xl">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+              <FaSignOutAlt className="text-3xl text-red-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-white mb-2">Ready to leave?</h2>
+            <p className="text-gray-400 mb-6">Are you sure you want to logout from CloudInn?</p>
             <div className="flex justify-center gap-4">
-              <button
-                onClick={() => {
-                  localStorage.removeItem("recepToken");
-                  localStorage.removeItem("recepRefreshToken");
-                  setShowLogoutPopup(false);
-                  router.push("http://localhost:3000/role");
-                }}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-              >
-                Yes
+              <button onClick={handleLogout}
+                className="px-6 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-200 font-medium">
+                Yes, Logout
               </button>
-              <button
-                onClick={() => setShowLogoutPopup(false)}
-                className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 transition"
-              >
-                No
+              <button onClick={() => setShowLogoutConfirm(false)}
+                className="px-6 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all duration-200 font-medium">
+                Cancel
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
-}
+};
+
+export default ReceptionistDashboard;
