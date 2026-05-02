@@ -1,236 +1,334 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { 
+  FaBell, FaCog, FaVolumeMute, FaVolumeUp, FaStar, FaRegStar, 
+  FaSpinner, FaTimes, FaBullhorn, FaHotel, FaTags, FaExclamationTriangle, FaComment
+} from 'react-icons/fa';
 
 export default function OwnerNotificationSetting({ showMenu }) {
   const [muteStatus, setMuteStatus] = useState('Active');
-  const [sidebarOpen, setSidebarOpen] = useState(showMenu);
+  const [sidebarOpen, setSidebarOpen] = useState(showMenu === true || showMenu === 'true');
+  const [activeFilter, setActiveFilter] = useState('all');
   const [announcements, setAnnouncements] = useState([]);
-  const [systemAlerts, setSystemAlerts] = useState([]);
-  const [showSystemAlertsOnly, setShowSystemAlertsOnly] = useState(false);
   const [starredIds, setStarredIds] = useState([]);
-  const [showStarredOnly, setShowStarredOnly] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [mounted, setMounted] = useState(false);
 
-  // Helper to attach JWT token
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem("authToken");
-    return token
-      ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
-      : { "Content-Type": "application/json" };
-  };
+  // ✅ Fetch announcements sent FROM ADMIN to this hotel owner
+  // Uses /api/recent-announcements/ — the admin→hotels endpoint
+  // Backend filters by the logged-in user's hotel automatically (via JWT)
+  const fetchAnnouncements = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      const response = await fetch("http://localhost:8000/api/recent-announcements/", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      });
 
-  // Fetch starred notifications
-  useEffect(() => {
-    fetch('http://localhost:8000/api/starred-notifications/', {
-      headers: getAuthHeaders(),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        const items = Array.isArray(data) ? data : data.results || [];
-        const ids = items.map((item) => item.announcement);
-        setStarredIds(ids);
-      })
-      .catch((err) => console.error('Failed to fetch starred notifications:', err));
-  }, []);
+      if (response.ok) {
+        const data = await response.json();
+        const items = Array.isArray(data) ? data : [];
 
-  // Toggle star/unstar
-  const toggleStar = (id) => {
-    if (starredIds.includes(id)) {
-      fetch(`http://localhost:8000/api/star-notification/${id}/`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      })
-        .then((res) => {
-          if (res.status === 204) {
-            setStarredIds((prev) => prev.filter((item) => item !== id));
-          } else {
-            console.error('Failed to unstar notification:', res.status);
-          }
-        })
-        .catch((err) => console.error('Failed to unstar notification:', err));
-    } else {
-      fetch('http://localhost:8000/api/star-notification/', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ announcement: id }),
-      })
-        .then((res) => {
-          if (res.ok) {
-            setStarredIds((prev) => [...prev, id]);
-          } else {
-            res.json().then((err) => console.error('Failed to star notification:', err));
-          }
-        })
-        .catch((err) => console.error('Failed to star notification:', err));
+        const formatted = items.map(ann => ({
+          id: ann.id,
+          title: 'Admin Announcement',
+          message: ann.content,
+          // 'From' shows CloudInn Admin since this is admin→owner direction
+          hotelName: 'CloudInn Admin',
+          type: 'announcement',
+          time: formatTimeAgo(ann.timestamp),
+          timestamp: ann.timestamp,
+          isStarred: starredIds.includes(ann.id),
+        }));
+
+        setAnnouncements(formatted);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.error || "Failed to load announcements");
+      }
+    } catch (err) {
+      console.error("Error fetching announcements:", err);
+      setError("Network error while loading announcements");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleImportantNotifications = () => {
-    setShowStarredOnly(true);
-    setShowSystemAlertsOnly(false);
+  // Fetch starred notifications
+  const fetchStarred = async () => {
+    try {
+      const token = localStorage.getItem("authToken");
+      const response = await fetch("http://localhost:8000/api/starred-notifications/", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setStarredIds(data.map(item => item.announcement));
+      }
+    } catch (err) {
+      console.error("Error fetching starred:", err);
+    }
   };
 
-  const handleSystemAlerts = () => {
-    fetch('http://localhost:8000/api/recent-announcements/', {
-      headers: getAuthHeaders(),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        const items = Array.isArray(data) ? data : data.results || [];
-        const ownerOnly = items.filter((item) => item.recipients.includes('owner'));
-        setSystemAlerts(ownerOnly);
-        setShowSystemAlertsOnly(true);
-        setShowStarredOnly(false);
-      })
-      .catch((err) => console.error('Failed to fetch system alerts:', err));
+  // Star / Unstar
+  const toggleStar = async (itemId, isStarred) => {
+    try {
+      const token = localStorage.getItem("authToken");
+      if (isStarred) {
+        await fetch(`http://localhost:8000/api/star-notification/${itemId}/`, {
+          method: "DELETE",
+          headers: { ...(token && { Authorization: `Bearer ${token}` }) },
+        });
+        setStarredIds(prev => prev.filter(id => id !== itemId));
+      } else {
+        await fetch("http://localhost:8000/api/star-notification/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: JSON.stringify({ announcement: itemId }),
+        });
+        setStarredIds(prev => [...prev, itemId]);
+      }
+      setAnnouncements(prev =>
+        prev.map(item => item.id === itemId ? { ...item, isStarred: !isStarred } : item)
+      );
+    } catch (err) {
+      console.error("Error toggling star:", err);
+      setError("Failed to update star status");
+      setTimeout(() => setError(''), 3000);
+    }
+  };
+
+  const formatTimeAgo = (timestamp) => {
+    if (!timestamp) return 'Just now';
+    const diffMs = new Date() - new Date(timestamp);
+    const m = Math.floor(diffMs / 60000);
+    const h = Math.floor(diffMs / 3600000);
+    const d = Math.floor(diffMs / 86400000);
+    if (m < 1)  return 'Just now';
+    if (m < 60) return `${m} min ago`;
+    if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;
+    return `${d} day${d > 1 ? 's' : ''} ago`;
   };
 
   useEffect(() => {
-    setSidebarOpen(showMenu);
-  }, [showMenu]);
-
-  useEffect(() => {
-    fetch('http://localhost:8000/api/recent-announcements/', {
-      headers: getAuthHeaders(),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        const items = Array.isArray(data) ? data : data.results || [];
-        const ownerOnly = items.filter((item) => item.recipients.includes('owner'));
-        setAnnouncements(ownerOnly);
-      })
-      .catch((err) => console.error('Failed to fetch announcements:', err));
+    setMounted(true);
+    fetchStarred();
+    fetchAnnouncements();
   }, []);
 
-  const handleMuteOneHour = () => {
-    setMuteStatus('Muted for 1 hour');
-    setTimeout(() => setMuteStatus('Active'), 3600000);
-  };
+  useEffect(() => {
+    setSidebarOpen(showMenu === true || showMenu === 'true');
+  }, [showMenu]);
+
+  const handleMuteOneHour    = () => { setMuteStatus('Muted for 1 hour'); setTimeout(() => setMuteStatus('Active'), 3600000); };
   const handleMuteUntilUnmute = () => setMuteStatus('Muted until unmuted');
-  const handleUnmute = () => setMuteStatus('Active');
+  const handleUnmute          = () => setMuteStatus('Active');
+
+  const getFilteredItems = () => {
+    switch (activeFilter) {
+      case 'important':     return announcements.filter(i => i.isStarred);
+      case 'announcements': return announcements;
+      default:              return announcements;
+    }
+  };
+
+  const filteredItems = getFilteredItems();
+
+  if (!mounted) return null;
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      {sidebarOpen && (
-        <aside className="w-64 bg-gray-900 text-white p-6 space-y-6">
-          <h2 className="text-xl font-bold mb-4">Notifications</h2>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={() => {
-                setShowSystemAlertsOnly(false);
-                setShowStarredOnly(false);
-              }}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700"
-            >
-              Show All Notifications
-            </button>
-            <button
-              onClick={handleImportantNotifications}
-              className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700"
-            >
-              Important Notifications
-            </button>
-            <button
-              onClick={handleSystemAlerts}
-              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 whitespace-nowrap w-fit"
-            >
-              System Alert Notifications
-            </button>
-            <button className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700">
-              Feedbacks Notifications
-            </button>
-          </div>
+    <>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Outfit:wght@300;400;500;600&display=swap');
+        :root {
+          --gold: #c8a96e; --gold-lt: #e2cfa0;
+          --gold-dim: rgba(200,169,110,0.16); --gold-border: rgba(200,169,110,0.2);
+          --ink: #080706; --ivory: #f4efe5;
+          --ivory-60: rgba(244,239,229,0.6); --ivory-30: rgba(244,239,229,0.3);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Outfit',sans-serif; background:var(--ink); color:var(--ivory); }
+        .glass-card {
+          background:rgba(10,9,7,0.68); backdrop-filter:blur(18px);
+          border:1px solid var(--gold-border);
+          transition:border-color .3s, box-shadow .4s, transform .3s;
+        }
+        .glass-card:hover {
+          border-color:rgba(200,169,110,0.42);
+          box-shadow:0 28px 64px rgba(0,0,0,0.65),0 0 0 1px rgba(200,169,110,0.1);
+          transform:translateY(-4px);
+        }
+        .gold-divider { height:1px; background:linear-gradient(90deg,transparent,var(--gold-border),transparent); }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        .fade-up { animation:fadeUp .5s cubic-bezier(.22,1,.36,1) forwards; }
+        .star-btn { transition:all .2s ease; }
+        .star-btn:hover { transform:scale(1.1); }
+      `}</style>
 
-          <h2 className="text-xl font-bold mt-8 mb-4">Settings</h2>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={handleMuteOneHour}
-              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700"
-            >
-              Mute for 1 Hour
-            </button>
-            <button
-              onClick={handleMuteUntilUnmute}
-              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700"
-            >
-              Mute Until Unmute
-            </button>
-            <button
-              onClick={handleUnmute}
-              className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700"
-            >
-              Unmute
-            </button>
-          </div>
-        </aside>
-      )}
+      <div className="relative min-h-screen overflow-hidden">
+        <div className="fixed inset-0 z-0">
+          <div className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage:"url('https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1800&auto=format')", filter:'brightness(0.6) saturate(1.2)' }} />
+          <div className="absolute inset-0 bg-gradient-to-br from-amber-900/40 via-black/40 to-amber-800/30" />
+        </div>
 
-      <main className="flex-1 p-10">
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="mb-6 px-4 py-2 rounded-lg bg-gray-800 text-white hover:bg-gray-700"
-        >
-          {sidebarOpen ? 'Hide Menu' : 'Show Menu'}
-        </button>
+        <div className="relative z-10 flex min-h-screen">
 
-        <h1 className="text-3xl font-bold mb-6">
-          {showSystemAlertsOnly
-            ? 'System Alerts'
-            : showStarredOnly
-            ? 'Important Notifications'
-            : 'All Notifications'}
-        </h1>
+          {/* Sidebar */}
+          {sidebarOpen && (
+            <aside className="w-64 glass-card rounded-none border-l-0 border-t-0 border-b-0 shadow-2xl flex flex-col">
+              <div className="p-6 border-b border-gold-border">
+                <h2 className="font-serif text-2xl font-light text-ivory flex items-center gap-2">
+                  <FaBell className="text-gold" /> Owner Notifications
+                </h2>
+                <div className="gold-divider mt-2" />
+              </div>
 
-        <div className="space-y-4">
-          {showSystemAlertsOnly ? (
-            systemAlerts.length > 0 ? (
-              systemAlerts.map((item) => (
-                <div
-                  key={item.id}
-                  className="p-4 bg-red-100 border border-red-400 rounded-lg shadow"
-                >
-                  <div className="font-semibold">🚨 {item.content}</div>
-                  <div className="text-sm text-red-700">
-                    Sent to {item.recipients.join(', ')} •{' '}
-                    {new Date(item.timestamp).toLocaleString()}
-                  </div>
+              <nav className="flex-1 p-4 space-y-2">
+                {[
+                  { key: 'all',           label: 'All',           icon: <FaBell className="text-gold" /> },
+                  { key: 'important',     label: 'Important',     icon: <FaStar className="text-yellow-400" /> },
+                  { key: 'announcements', label: 'Announcements', icon: <FaBullhorn className="text-purple-400" /> },
+                ].map(({ key, label, icon }) => (
+                  <button key={key} onClick={() => setActiveFilter(key)}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition ${
+                      activeFilter === key ? 'bg-gold-dim text-ivory' : 'text-ivory-60 hover:text-ivory hover:bg-gold-dim'
+                    }`}>
+                    {icon} {label}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="p-4 border-t border-gold-border">
+                <h3 className="font-serif text-lg font-light text-ivory flex items-center gap-2 mb-3">
+                  <FaCog className="text-gold" /> Sound Settings
+                </h3>
+                <div className="space-y-2">
+                  <button onClick={handleMuteOneHour} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-gold-dim hover:bg-gold-dim/80 text-gold-lt transition">
+                    <FaVolumeMute /> Mute for 1 Hour
+                  </button>
+                  <button onClick={handleMuteUntilUnmute} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-gold-dim hover:bg-gold-dim/80 text-gold-lt transition">
+                    <FaVolumeMute /> Mute Until Unmute
+                  </button>
+                  <button onClick={handleUnmute} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-green-600/20 hover:bg-green-600/30 text-green-400 transition">
+                    <FaVolumeUp /> Unmute
+                  </button>
                 </div>
-              ))
-            ) : (
-              <div className="text-gray-500">No system alerts available.</div>
-            )
-          ) : (
-            (showStarredOnly ? announcements.filter((item) => starredIds.includes(item.id)) : announcements)
-              .map((item) => {
-                const isStarred = starredIds.includes(item.id);
-                return (
-                  <div
-                    key={item.id}
-                    className="p-4 bg-white rounded-lg shadow flex justify-between items-center"
-                  >
-                    <div>
-                      <div className="font-semibold">📢 {item.content}</div>
-                      <div className="text-sm text-gray-500">
-                        Sent to {item.recipients.join(', ')} •{' '}
-                        {new Date(item.timestamp).toLocaleString()}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => toggleStar(item.id)}
-                      className="text-2xl"
-                      title="Star this notification"
-                    >
-                      {isStarred ? '⭐' : '☆'}
-                    </button>
-                  </div>
-                );
-              })
+              </div>
+            </aside>
           )}
-        </div>
 
-        <div className="mt-10 text-gray-700">
-          <strong>Status:</strong> {muteStatus}
+          {/* Main Content */}
+          <main className="flex-1 p-8">
+            <div className="max-w-4xl mx-auto">
+              <button onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="mb-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 backdrop-blur border border-gold-border text-ivory-60 hover:text-ivory transition">
+                {sidebarOpen ? '← Hide Menu' : '☰ Show Menu'}
+              </button>
+
+              <div className="mb-8">
+                <h1 className="font-serif text-4xl md:text-5xl font-light text-ivory">
+                  {activeFilter === 'all'           && 'All Notifications'}
+                  {activeFilter === 'important'     && 'Important Items'}
+                  {activeFilter === 'announcements' && 'Admin Announcements'}
+                </h1>
+                <div className="gold-divider w-24 mt-2" />
+                <div className="mt-3 text-sm text-ivory-60 flex items-center gap-2">
+                  <span>Status:</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    muteStatus === 'Active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                  }`}>{muteStatus}</span>
+                  <span className="ml-auto text-xs">{filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''}</span>
+                </div>
+              </div>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg flex items-center gap-2">
+                  <FaTimes className="text-red-400 text-sm" />
+                  <p className="text-red-400 text-sm flex-1">{error}</p>
+                  <button onClick={() => setError('')}><FaTimes className="text-red-400 text-xs" /></button>
+                </div>
+              )}
+
+              {loading && (
+                <div className="flex justify-center items-center py-12">
+                  <FaSpinner className="text-gold text-3xl animate-spin" />
+                </div>
+              )}
+
+              {!loading && (
+                <div className="space-y-4">
+                  {filteredItems.length === 0 ? (
+                    <div className="glass-card rounded-lg p-12 text-center">
+                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/5 flex items-center justify-center">
+                        <FaBell className="text-gray-500 text-2xl" />
+                      </div>
+                      <p className="text-gray-400">
+                        {activeFilter === 'important'     && 'No important items'}
+                        {activeFilter === 'announcements' && 'No admin announcements yet'}
+                        {activeFilter === 'all'           && 'No notifications yet'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        {activeFilter === 'announcements' && 'Announcements sent by CloudInn Admin will appear here'}
+                        {activeFilter === 'important'     && 'Star items to mark them as important'}
+                        {activeFilter === 'all'           && 'New notifications will appear here'}
+                      </p>
+                    </div>
+                  ) : (
+                    filteredItems.map((item, idx) => (
+                      <div key={item.id} className="glass-card rounded-lg p-5 fade-up group"
+                        style={{ animationDelay: `${idx * 0.05}s` }}>
+                        <div className="flex items-start gap-4">
+                          <div className="flex-shrink-0 mt-1">
+                            <FaBullhorn className="text-purple-400 text-lg" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-serif text-lg font-medium text-ivory">{item.title}</h3>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">Admin</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs text-ivory-30 uppercase tracking-wider">{item.time}</span>
+                                <button onClick={() => toggleStar(item.id, item.isStarred)}
+                                  className="star-btn focus:outline-none"
+                                  title={item.isStarred ? "Remove from important" : "Mark as important"}>
+                                  {item.isStarred
+                                    ? <FaStar className="text-yellow-400 text-lg" />
+                                    : <FaRegStar className="text-ivory-30 hover:text-yellow-400 text-lg transition" />}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2 mb-2">
+                              <FaHotel className="text-amber-400 text-xs" />
+                              <span className="text-xs text-amber-400/80 font-medium">From: {item.hotelName}</span>
+                            </div>
+                            <p className="text-ivory-60 text-sm mt-2 leading-relaxed border-l-2 border-gold-border pl-3">
+                              {item.message}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </main>
         </div>
-      </main>
-    </div>
+      </div>
+    </>
   );
 }

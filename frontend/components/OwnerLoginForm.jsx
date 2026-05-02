@@ -4,19 +4,27 @@ import { useState } from 'react';
 import api from '../utils/api';   
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { FaEye, FaEyeSlash, FaSpinner, FaSignInAlt, FaHotel } from 'react-icons/fa';
 
 export default function OwnerLoginForm() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
-  const [status, setStatus] = useState(""); // success or error
+  const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
   const handleLogin = async () => {
+    if (!username || !password) {
+      setMessage("Please enter both username and password");
+      setStatus('error');
+      return;
+    }
+    
     setIsLoading(true);
     try {
-      const res = await api.post('http://127.0.0.1:8000/api/token/', { username, password });
+      const res = await api.post('/api/token/', { username, password });
 
       if (res.status === 200) {
         // Save JWT token + hotel info
@@ -24,7 +32,7 @@ export default function OwnerLoginForm() {
         localStorage.setItem("refreshToken", res.data.refresh);
         localStorage.setItem("hotelId", res.data.hotel_id);
 
-        setMessage(res.data.message || 'Login successful');
+        setMessage(res.data.message || 'Login successful! Redirecting...');
         setStatus('success');
 
         console.log("Login response:", res.data);
@@ -35,9 +43,8 @@ export default function OwnerLoginForm() {
         }, 1500);
       }
     } catch (err) {
-      setMessage(err.response?.data?.error || 'Login failed');
+      setMessage(err.response?.data?.error || 'Login failed. Invalid credentials.');
       setStatus('error');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -50,7 +57,7 @@ export default function OwnerLoginForm() {
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-teal-600/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-emerald-400/5 rounded-full blur-3xl"></div>
         
-        {/* Decorative Grid Pattern - Fixed SVG encoding */}
+        {/* Decorative Grid Pattern */}
         <div 
           className="absolute inset-0 opacity-30"
           style={{
@@ -78,11 +85,7 @@ export default function OwnerLoginForm() {
             <div className="relative">
               <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-xl animate-pulse"></div>
               <div className="relative w-24 h-24 rounded-full overflow-hidden mb-4 ring-4 ring-emerald-500/30 ring-offset-2 ring-offset-slate-900 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center">
-                <img
-                  src="/ownerlog.png"
-                  alt="Owner Icon"
-                  className="w-16 h-16 object-contain block filter brightness-0 invert opacity-90"
-                />
+                <FaHotel className="w-12 h-12 text-emerald-400" />
               </div>
             </div>
 
@@ -115,6 +118,7 @@ export default function OwnerLoginForm() {
                 placeholder="Enter your username"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
                 className="w-full px-4 py-3 bg-white/5 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-white placeholder-gray-500 transition-all duration-300 hover:bg-white/10"
               />
             </div>
@@ -123,13 +127,26 @@ export default function OwnerLoginForm() {
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Password
               </label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-white/5 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-white placeholder-gray-500 transition-all duration-300 hover:bg-white/10"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                  className="w-full px-4 py-3 bg-white/5 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-white placeholder-gray-500 transition-all duration-300 hover:bg-white/10 pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                >
+                  {showPassword ? 
+                    <FaEyeSlash className="text-gray-400 hover:text-emerald-400 transition-colors" /> : 
+                    <FaEye className="text-gray-400 hover:text-emerald-400 transition-colors" />
+                  }
+                </button>
+              </div>
             </div>
 
             <div className="flex justify-end">
@@ -144,18 +161,18 @@ export default function OwnerLoginForm() {
             <button
               onClick={handleLogin}
               disabled={isLoading}
-              className="relative w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-[1.02] active:scale-98 shadow-lg shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="relative w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-[1.02] active:scale-98 shadow-lg shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
             >
               {isLoading ? (
-                <div className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                <>
+                  <FaSpinner className="animate-spin h-5 w-5" />
                   <span>Authenticating...</span>
-                </div>
+                </>
               ) : (
-                'Login to Dashboard'
+                <>
+                  <FaSignInAlt className="text-sm" />
+                  <span>Login to Dashboard</span>
+                </>
               )}
             </button>
 

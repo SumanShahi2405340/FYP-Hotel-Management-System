@@ -1,16 +1,14 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { FaChartLine, FaMoneyCheckAlt, FaBookOpen, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
+import { FaMoneyCheckAlt, FaBookOpen, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
 
 export default function CommissionSetting() {
-  const [showRevenueTable, setShowRevenueTable] = useState(false);
   const [showPaymentTable, setShowPaymentTable] = useState(false);
   const [showRulesTable, setShowRulesTable] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [rules, setRules] = useState([]);
   const [payments, setPayments] = useState([]);
 
-  const [revenueData, setRevenueData] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState('Dec');
   const [selectedYear, setSelectedYear] = useState('2025');
 
@@ -34,24 +32,6 @@ export default function CommissionSetting() {
       date: '2025-09-01',
     },
   ];
-
-  // Fetch commission revenue report
-  useEffect(() => {
-    const fetchRevenue = async () => {
-      try {
-        let url = 'http://localhost:8000/api/commission-revenue/';
-        const monthNumber = new Date(`${selectedMonth} 1, ${selectedYear}`).getMonth() + 1;
-        const paddedMonth = monthNumber.toString().padStart(2, '0');
-        url += `?month=${paddedMonth}&year=${selectedYear}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        setRevenueData(data);
-      } catch (err) {
-        console.error('Error fetching commission revenue:', err);
-      }
-    };
-    if (showRevenueTable) fetchRevenue();
-  }, [selectedMonth, selectedYear, showRevenueTable]);
 
   // Fetch active hotels for payments
   useEffect(() => {
@@ -162,19 +142,12 @@ export default function CommissionSetting() {
   };
 
   // Toggle tables
-  const handleRevenueOverview = () => {
-    setShowRevenueTable(!showRevenueTable);
-    setShowPaymentTable(false);
-    setShowRulesTable(false);
-  };
   const handleTrackPayment = () => {
     setShowPaymentTable(!showPaymentTable);
-    setShowRevenueTable(false);
     setShowRulesTable(false);
   };
   const handleViewRules = () => {
     setShowRulesTable(!showRulesTable);
-    setShowRevenueTable(false);
     setShowPaymentTable(false);
   };
 
@@ -211,54 +184,6 @@ export default function CommissionSetting() {
           background: linear-gradient(90deg, transparent, var(--gold-border), transparent);
           margin: 20px 0;
         }
-        .btn-gold {
-          background: var(--gold-dim);
-          border: 1px solid var(--gold-border);
-          color: var(--gold-light);
-          transition: all 0.3s;
-        }
-        .btn-gold:hover {
-          background: rgba(201,168,76,0.28);
-          border-color: var(--gold);
-          transform: scale(1.02);
-          box-shadow: 0 0 12px rgba(201,168,76,0.3);
-        }
-        .btn-primary {
-          background: linear-gradient(135deg, #3B82F6, #2563EB);
-          border: none;
-          color: white;
-        }
-        .btn-primary:hover {
-          transform: scale(1.02);
-          box-shadow: 0 8px 20px rgba(59,130,246,0.3);
-        }
-        .btn-success {
-          background: linear-gradient(135deg, #10B981, #059669);
-          border: none;
-          color: white;
-        }
-        .btn-success:hover {
-          transform: scale(1.02);
-          box-shadow: 0 8px 20px rgba(16,185,129,0.3);
-        }
-        .btn-warning {
-          background: linear-gradient(135deg, #F59E0B, #D97706);
-          border: none;
-          color: white;
-        }
-        .btn-warning:hover {
-          transform: scale(1.02);
-          box-shadow: 0 8px 20px rgba(245,158,11,0.3);
-        }
-        .btn-purple {
-          background: linear-gradient(135deg, #8B5CF6, #7C3AED);
-          border: none;
-          color: white;
-        }
-        .btn-purple:hover {
-          transform: scale(1.02);
-          box-shadow: 0 8px 20px rgba(139,92,246,0.3);
-        }
         .lux-table th {
           font-size: 10px;
           letter-spacing: 0.15em;
@@ -291,21 +216,15 @@ export default function CommissionSetting() {
           background-position: right 8px center;
           background-size: 14px;
         }
-        .select-lux:focus {
-          outline: none;
-          border-color: var(--gold);
-        }
+        .select-lux:focus { outline: none; border-color: var(--gold); }
         @keyframes fadeUp {
           from { opacity: 0; transform: translateY(20px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        .fade-up {
-          animation: fadeUp 0.5s ease forwards;
-        }
+        .fade-up { animation: fadeUp 0.5s ease forwards; }
       `}</style>
 
       <div className="relative min-h-screen bg-black overflow-hidden">
-        {/* Background - cleaned, no pattern, brighter overlay */}
         <div className="fixed inset-0 z-0">
           <div
             className="absolute inset-0 bg-cover bg-center"
@@ -319,78 +238,40 @@ export default function CommissionSetting() {
 
         <div className="relative z-10 px-6 md:px-12 py-16">
           <div className="max-w-6xl mx-auto">
+
             {/* Page Header */}
             <div className="text-center mb-12 fade-up" style={{ animationDelay: '0.05s', opacity: 0 }}>
-              <div className="inline-flex items-center gap-2 bg-gold-dim/30 px-4 py-1 rounded-full border border-gold-border">
-                <span className="w-2 h-2 bg-gold rounded-full" />
-                <span className="text-xs uppercase tracking-wider text-gold-light">Commission Management</span>
+              <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full border" style={{ background: 'var(--gold-dim)', borderColor: 'var(--gold-border)' }}>
+                <span className="w-2 h-2 rounded-full" style={{ background: 'var(--gold)' }} />
+                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--gold-light)' }}>Commission Management</span>
               </div>
               <h1 className="serif text-5xl md:text-6xl font-light text-white mt-6 mb-4">Commission Setting</h1>
               <div className="gold-divider w-24 mx-auto" />
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Buttons — only 2 now */}
             <div className="flex flex-wrap justify-center gap-5 mb-16 fade-up" style={{ animationDelay: '0.1s', opacity: 0 }}>
-              <button onClick={handleRevenueOverview} className="flex items-center gap-3 px-6 py-3 rounded-full bg-blue-600/80 hover:bg-blue-600 text-white transition-all shadow-lg hover:scale-105">
-                <FaChartLine size={18} />
-                <span className="font-semibold">Track Commission Revenue</span>
-              </button>
-              <button onClick={handleTrackPayment} className="flex items-center gap-3 px-6 py-3 rounded-full bg-green-600/80 hover:bg-green-600 text-white transition-all shadow-lg hover:scale-105">
+              <button
+                onClick={handleTrackPayment}
+                className="flex items-center gap-3 px-6 py-3 rounded-full text-white transition-all shadow-lg hover:scale-105"
+                style={{ background: showPaymentTable ? '#059669' : 'rgba(16,185,129,0.75)' }}
+              >
                 <FaMoneyCheckAlt size={18} />
                 <span className="font-semibold">Confirm Commission Payments</span>
               </button>
-              <button onClick={handleViewRules} className="flex items-center gap-3 px-6 py-3 rounded-full bg-purple-600/80 hover:bg-purple-600 text-white transition-all shadow-lg hover:scale-105">
+              <button
+                onClick={handleViewRules}
+                className="flex items-center gap-3 px-6 py-3 rounded-full text-white transition-all shadow-lg hover:scale-105"
+                style={{ background: showRulesTable ? '#7C3AED' : 'rgba(139,92,246,0.75)' }}
+              >
                 <FaBookOpen size={18} />
                 <span className="font-semibold">View Commission Rules</span>
               </button>
             </div>
 
-            {/* Revenue Table */}
-            {showRevenueTable && (
-              <div className="lux-card rounded-2xl p-6 fade-up" style={{ animationDelay: '0.2s', opacity: 0 }}>
-                <div className="flex flex-wrap justify-between items-center mb-6">
-                  <h2 className="serif text-2xl font-light text-white">Track Commission Revenue</h2>
-                  <div className="flex gap-3">
-                    <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="select-lux">
-                      {Array.from({ length: 10 }, (_, i) => 2025 + i).map(y => <option key={y}>{y}</option>)}
-                    </select>
-                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="select-lux">
-                      {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(m => <option key={m}>{m}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="lux-table w-full">
-                    <thead>
-                      <tr>
-                        <th>Hotel ID</th>
-                        <th>Hotel Name</th>
-                        <th>Commission Revenue</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {revenueData.map(item => (
-                        <tr key={item.payment_id}>
-                          <td>{item.payment_id}</td>
-                          <td className="font-medium text-white/90">{item.hotel_name}</td>
-                          <td><span className="text-gold-light">NPR {item.amount}</span></td>
-                          <td>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              item.status === 'Paid' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
-                            }`}>{item.status}</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
             {/* Payment Table */}
             {showPaymentTable && (
-              <div className="lux-card rounded-2xl p-6 fade-up" style={{ animationDelay: '0.2s', opacity: 0 }}>
+              <div className="lux-card rounded-2xl p-6 mb-8 fade-up" style={{ animationDelay: '0.2s', opacity: 0 }}>
                 <div className="flex flex-wrap justify-between items-center mb-6">
                   <h2 className="serif text-2xl font-light text-white">Confirm Commission Payments</h2>
                   <div className="flex gap-3">
@@ -419,7 +300,7 @@ export default function CommissionSetting() {
                         <tr key={payment.id}>
                           <td>{payment.id}</td>
                           <td>{payment.hotel}</td>
-                          <td><span className="text-gold-light">NPR {payment.amount}</span></td>
+                          <td><span style={{ color: 'var(--gold-light)' }}>NPR {payment.amount}</span></td>
                           <td>
                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                               payment.status === 'Paid' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
@@ -438,9 +319,11 @@ export default function CommissionSetting() {
                                 }
                                 setPayments(updated);
                               }}
-                              className={`px-3 py-1 rounded-md text-xs font-medium transition ${
-                                payment.status === 'Paid' ? 'bg-yellow-500/80 hover:bg-yellow-600' : 'bg-green-500/80 hover:bg-green-600'
-                              } text-white`}
+                              className={`px-3 py-1 rounded-md text-xs font-medium transition text-white ${
+                                payment.status === 'Paid'
+                                  ? 'bg-yellow-500/80 hover:bg-yellow-600'
+                                  : 'bg-green-500/80 hover:bg-green-600'
+                              }`}
                             >
                               {payment.action}
                             </button>
@@ -452,7 +335,11 @@ export default function CommissionSetting() {
                     <tfoot>
                       <tr>
                         <td colSpan="6" className="pt-6 text-right">
-                          <button onClick={handleConfirmPayments} className="px-6 py-2 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white font-semibold transition shadow-lg">
+                          <button
+                            onClick={handleConfirmPayments}
+                            className="px-6 py-2 rounded-lg text-white font-semibold transition shadow-lg"
+                            style={{ background: 'rgba(99,102,241,0.8)' }}
+                          >
                             Confirm All Payments
                           </button>
                         </td>
@@ -470,7 +357,8 @@ export default function CommissionSetting() {
                   <h2 className="serif text-2xl font-light text-white">Commission Rules</h2>
                   <button
                     onClick={() => setIsEditing(!isEditing)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white transition"
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-white transition"
+                    style={{ background: 'rgba(59,130,246,0.8)' }}
                   >
                     {isEditing ? <FaTimes size={14} /> : <FaEdit size={14} />}
                     {isEditing ? 'Cancel' : 'Edit Rules'}
@@ -500,7 +388,8 @@ export default function CommissionSetting() {
                                   newRules[idx].name = e.target.value;
                                   setRules(newRules);
                                 }}
-                                className="bg-black/40 border border-gold-border rounded px-2 py-1 w-full text-white"
+                                className="bg-black/40 border rounded px-2 py-1 w-full text-white"
+                                style={{ borderColor: 'var(--gold-border)' }}
                               />
                             ) : rule.name}
                           </td>
@@ -514,7 +403,8 @@ export default function CommissionSetting() {
                                   newRules[idx].desc = e.target.value;
                                   setRules(newRules);
                                 }}
-                                className="bg-black/40 border border-gold-border rounded px-2 py-1 w-full text-white"
+                                className="bg-black/40 border rounded px-2 py-1 w-full text-white"
+                                style={{ borderColor: 'var(--gold-border)' }}
                               />
                             ) : rule.desc}
                           </td>
@@ -528,7 +418,8 @@ export default function CommissionSetting() {
                                   newRules[idx].date = e.target.value;
                                   setRules(newRules);
                                 }}
-                                className="bg-black/40 border border-gold-border rounded px-2 py-1 text-white"
+                                className="bg-black/40 border rounded px-2 py-1 text-white"
+                                style={{ borderColor: 'var(--gold-border)' }}
                               />
                             ) : rule.date}
                           </td>
@@ -541,7 +432,8 @@ export default function CommissionSetting() {
                   <div className="flex justify-end mt-6">
                     <button
                       onClick={handleSaveRules}
-                      className="flex items-center gap-2 px-6 py-2 rounded-lg bg-green-600/80 hover:bg-green-600 text-white transition"
+                      className="flex items-center gap-2 px-6 py-2 rounded-lg text-white transition"
+                      style={{ background: 'rgba(16,185,129,0.8)' }}
                     >
                       <FaSave size={14} />
                       Save Rules
@@ -550,6 +442,7 @@ export default function CommissionSetting() {
                 )}
               </div>
             )}
+
           </div>
         </div>
       </div>

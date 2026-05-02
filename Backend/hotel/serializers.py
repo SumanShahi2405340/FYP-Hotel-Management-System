@@ -18,8 +18,13 @@ from .models import (
     Attendance,
     ManagePayments,
     EsewaTransaction,
+    RoomImage,  # Add RoomImage import
+    Guest,
 )
 
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 # HOTEL SERIALIZERS
 class HotelSerializer(serializers.ModelSerializer):
@@ -41,6 +46,8 @@ class HotelSerializer(serializers.ModelSerializer):
             'review_score',
             'usage_score',
             'created_at',
+            'latitude',
+            'longitude', 
         ]
 
 
@@ -72,6 +79,7 @@ class OTPRequestSerializer(serializers.Serializer):
 
 
 class OTPVerifySerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
     otp = serializers.CharField(required=True)
 
 
@@ -104,36 +112,46 @@ class CommissionRevenueSerializer(serializers.ModelSerializer):
         ]
 
 
-# ANNOUNCEMENTS
-class SendOwnerAnnouncementSerializer(serializers.ModelSerializer):
-    hotel_name = serializers.CharField(source="owner.hotel.name", read_only=True)
 
-    class Meta:
-        model = SendOwnerAnnouncement
-        fields = '__all__'
-
-
-class SendReceptionistAnnouncementSerializer(serializers.ModelSerializer):
-    hotel_name = serializers.CharField(source="owner.hotel.name", read_only=True)
-
-    class Meta:
-        model = SendReceptionistAnnouncement
-        fields = '__all__'
-
-
+# ANNOUNCEMENTS SERIALIZERS
 class SendAdminAnnouncementSerializer(serializers.ModelSerializer):
-    hotel_name = serializers.CharField(source="owner.hotel.name", read_only=True)
+    hotel_name = serializers.CharField(source='hotel.name', read_only=True)
 
     class Meta:
         model = SendAdminAnnouncement
-        fields = '__all__'
+        fields = ['id', 'hotel', 'hotel_name', 'message', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class SendOwnerAnnouncementSerializer(serializers.ModelSerializer):
+    hotel_name = serializers.CharField(source='hotel.name', read_only=True)
+
+    class Meta:
+        model = SendOwnerAnnouncement
+        fields = ['id', 'hotel', 'hotel_name', 'message', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class SendReceptionistAnnouncementSerializer(serializers.ModelSerializer):
+    hotel_name = serializers.CharField(source='hotel.name', read_only=True)
+
+    class Meta:
+        model = SendReceptionistAnnouncement
+        fields = ['id', 'hotel', 'hotel_name', 'message', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
 
 
 # OWNER NOTIFICATION
 class OwnerStarredNotificationSerializer(serializers.ModelSerializer):
+    announcement_id = serializers.IntegerField(source='announcement.id', read_only=True)
+    announcement_title = serializers.CharField(source='announcement.title', read_only=True, default='')
+    announcement_message = serializers.CharField(source='announcement.message', read_only=True)
+
     class Meta:
         model = OwnerStarredNotification
-        fields = ['id', 'announcement', 'starred_at']
+        fields = ['id', 'user', 'announcement', 'announcement_id', 'announcement_title', 'announcement_message', 'starred_at']
+        read_only_fields = ['user', 'starred_at']
 
 
 # ROOM INVENTORY / PRICE
@@ -166,7 +184,6 @@ class ReceptionistSerializer(serializers.ModelSerializer):
         read_only_fields = ["user"]
 
 
-# NEW: Receptionist Registration Serializer
 class ReceptionistRegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = Receptionist
@@ -182,8 +199,6 @@ class ReceptionistRegisterSerializer(serializers.ModelSerializer):
             'role', 
         ]
         read_only_fields = ['user', 'hotel','id']
-
-
 
 
 class StaffSerializer(serializers.ModelSerializer):
@@ -215,7 +230,6 @@ class AttendanceSerializer(serializers.ModelSerializer):
         return None
 
 
-
 # PROMOTION
 class PromotionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -231,7 +245,6 @@ class CommissionReportSerializer(serializers.ModelSerializer):
         read_only_fields = ["hotel", "created_at"]
 
 
-
 class ManageBookingsSerializer(serializers.ModelSerializer):
     current_status = serializers.SerializerMethodField()
 
@@ -243,14 +256,10 @@ class ManageBookingsSerializer(serializers.ModelSerializer):
         return obj.current_status()
 
 
-
 class ManagePaymentsSerializer(serializers.ModelSerializer):
     class Meta:
         model = ManagePayments
         fields = "__all__"
-
-
-
 
 
 class EsewaTransactionSerializer(serializers.ModelSerializer):
@@ -258,3 +267,421 @@ class EsewaTransactionSerializer(serializers.ModelSerializer):
         model = EsewaTransaction
         fields = "__all__"
         read_only_fields = ["created_at"]
+
+
+# ============================================================
+# ROOM IMAGE SERIALIZERS
+# ============================================================
+
+class RoomImageSerializer(serializers.ModelSerializer):
+    """
+    Serializer for RoomImage model
+    Returns image URLs that can be used directly in the frontend
+    """
+    image_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = RoomImage
+        fields = ['id', 'room_number', 'image', 'image_url', 'order', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_image_url(self, obj):
+        """
+        Generate the full URL for the image
+        Images are stored in the frontend public folder, so we return the path
+        """
+        from django.conf import settings
+        if obj.image:
+            # Return the URL path that will be served by Next.js from public folder
+            return f'/room_images/{obj.image}'
+        return None
+
+
+class RoomImagesUploadSerializer(serializers.Serializer):
+    """
+    Serializer for uploading multiple images for a room
+    """
+    roomNumber = serializers.IntegerField(help_text="Room number to upload images for")
+    images = serializers.ListField(
+        child=serializers.ImageField(
+            max_length=1000000,
+            allow_empty_file=False,
+            use_url=True
+        ),
+        max_length=4,
+        min_length=1,
+        help_text="List of image files (max 4 images)"
+    )
+    
+    def validate_images(self, value):
+        """
+        Validate each uploaded image
+        """
+        for image in value:
+            # Check file size (max 5MB)
+            if image.size > 5 * 1024 * 1024:
+                raise serializers.ValidationError(
+                    f"Image {image.name} is too large. Maximum size is 5MB."
+                )
+            
+            # Check file type
+            allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+            if image.content_type not in allowed_types:
+                raise serializers.ValidationError(
+                    f"Image {image.name} has invalid type. Allowed: JPEG, PNG, WEBP"
+                )
+        
+        return value
+
+
+class SingleRoomImageUpdateSerializer(serializers.Serializer):
+    """
+    Serializer for updating a single image's order
+    """
+    order = serializers.IntegerField(min_value=0, max_value=3, required=True)
+
+
+from .models import Guest
+
+# GUEST SERIALIZERS
+class GuestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Guest
+        fields = ['id', 'name', 'email', 'contact', 'address', 'id_proof', 'joined_date', 'is_active']
+        read_only_fields = ['id', 'joined_date']
+
+
+class GuestRegisterSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    email = serializers.EmailField()
+    contact = serializers.CharField(required=False, allow_blank=True)
+    address = serializers.CharField(required=False, allow_blank=True)
+    id_proof = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_email(self, value):
+        # Note: We're not raising error for duplicate emails
+        # because we'll handle it in the view by adding suffix
+        return value
+
+
+class GuestLoginSerializer(serializers.Serializer):
+    username = serializers.CharField(required=True)
+    password = serializers.CharField(required=True, write_only=True)
+
+    def validate(self, data):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            raise serializers.ValidationError("Username and password are required")
+        
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("Invalid username or password")
+        
+        if not user.check_password(password):
+            raise serializers.ValidationError("Invalid username or password")
+        
+        if not hasattr(user, 'guest') or user.guest is None:
+            raise serializers.ValidationError("This account is not a guest account")
+        
+        if not user.guest.is_active:
+            raise serializers.ValidationError("Your account has been deactivated")
+        
+        data['user'] = user
+        return data
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+# from rest_framework import serializers
+# from .models import (
+#     Hotel,
+#     CommissionRule,
+#     CommissionPayment,
+#     SendOwnerAnnouncement,
+#     SendReceptionistAnnouncement,
+#     SendAdminAnnouncement,
+#     OwnerStarredNotification,
+#     RoomInventory,
+#     RoomPrice,
+#     ManageMaintenanceRequest,
+#     Receptionist,
+#     Promotion,
+#     CommissionReport,
+#     ManageBookings,
+#     Staff,
+#     Attendance,
+#     ManagePayments,
+#     EsewaTransaction,
+# )a
+
+
+# # HOTEL SERIALIZERS
+# class HotelSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Hotel
+#         fields = [
+#             'id',
+#             'name',
+#             'owner',
+#             'contact',
+#             'email',
+#             'location',
+#             'pan',
+#             'age',
+#             'owner_contact',
+#             'citizenship',
+#             'permanent_address',
+#             'status',
+#             'review_score',
+#             'usage_score',
+#             'created_at',
+#         ]
+
+
+# class HotelRegisterSerializer(serializers.Serializer):
+#     name = serializers.CharField()
+#     owner = serializers.CharField()
+#     contact = serializers.CharField()
+#     email = serializers.EmailField()
+#     location = serializers.CharField()
+#     pan = serializers.CharField()
+
+
+# # ADMIN LOGIN
+# class AdminLoginSerializer(serializers.Serializer):
+#     email = serializers.EmailField(required=True)
+#     password = serializers.CharField(required=True, write_only=True)
+
+#     def validate_email(self, value):
+#         from django.contrib.auth import get_user_model
+#         User = get_user_model()
+#         if not User.objects.filter(email=value).exists():
+#             raise serializers.ValidationError("No user with this email")
+#         return value
+
+
+# # OTP SERIALIZERS
+# class OTPRequestSerializer(serializers.Serializer):
+#     email = serializers.EmailField(required=True)
+
+
+# # Update OTPVerifySerializer in serializers.py
+# class OTPVerifySerializer(serializers.Serializer):
+#     email = serializers.EmailField(required=True)
+#     otp = serializers.CharField(required=True)
+
+
+# # COMMISSION SERIALIZERS
+# class CommissionRuleSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = CommissionRule
+#         fields = ['rule_id', 'name', 'description', 'effective_date']
+
+
+# class CommissionPaymentSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = CommissionPayment
+#         fields = '__all__'
+
+
+# class CommissionRevenueSerializer(serializers.ModelSerializer):
+#     hotel_name = serializers.CharField(source='hotel.name', read_only=True)
+#     hotel_id = serializers.CharField(source='hotel.id', read_only=True)
+
+#     class Meta:
+#         model = CommissionPayment
+#         fields = [
+#             'payment_id',
+#             'hotel_id',
+#             'hotel_name',
+#             'amount',
+#             'status',
+#             'start_due_date',
+#         ]
+
+
+# # ANNOUNCEMENTS
+# class SendOwnerAnnouncementSerializer(serializers.ModelSerializer):
+#     hotel_name = serializers.CharField(source="owner.hotel.name", read_only=True)
+
+#     class Meta:
+#         model = SendOwnerAnnouncement
+#         fields = '__all__'
+
+
+# class SendReceptionistAnnouncementSerializer(serializers.ModelSerializer):
+#     hotel_name = serializers.CharField(source="owner.hotel.name", read_only=True)
+
+#     class Meta:
+#         model = SendReceptionistAnnouncement
+#         fields = '__all__'
+
+
+# class SendAdminAnnouncementSerializer(serializers.ModelSerializer):
+#     hotel_name = serializers.CharField(source="owner.hotel.name", read_only=True)
+
+#     class Meta:
+#         model = SendAdminAnnouncement
+#         fields = '__all__'
+
+
+# # OWNER NOTIFICATION
+# class OwnerStarredNotificationSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = OwnerStarredNotification
+#         fields = ['id', 'announcement', 'starred_at']
+
+
+# # ROOM INVENTORY / PRICE
+# class RoomInventorySerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = RoomInventory
+#         fields = ['id', 'normal_rooms', 'deluxe_rooms', 'suite_rooms']
+
+
+# class RoomPriceSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = RoomPrice
+#         fields = ['id', "normal_price", "deluxe_price", "suite_price"]
+
+
+# # MAINTENANCE REQUEST
+# class ManageMaintenanceRequestSerializer(serializers.ModelSerializer):
+#     hotel_name = serializers.CharField(source='hotel.name', read_only=True)
+
+#     class Meta:
+#         model = ManageMaintenanceRequest
+#         fields = "__all__"
+
+
+# # RECEPTIONIST SERIALIZERS
+# class ReceptionistSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Receptionist
+#         fields = "__all__"
+#         read_only_fields = ["user"]
+
+
+# # NEW: Receptionist Registration Serializer
+# class ReceptionistRegisterSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Receptionist
+#         fields = [
+#             'name',
+#             'age',
+#             'email',
+#             'contact',
+#             'permanent_address',
+#             'citizenship',
+#             'joined_date',
+#             'status',
+#             'role', 
+#         ]
+#         read_only_fields = ['user', 'hotel','id']
+
+
+
+
+# class StaffSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Staff
+#         fields = "__all__"
+
+
+# class AttendanceSerializer(serializers.ModelSerializer):
+#     name = serializers.SerializerMethodField()
+#     role = serializers.SerializerMethodField()
+
+#     class Meta:
+#         model = Attendance
+#         fields = ["id", "date", "status", "name", "role"]
+
+#     def get_name(self, obj):
+#         if obj.staff:
+#             return obj.staff.name
+#         elif obj.receptionist:
+#             return obj.receptionist.name
+#         return None
+
+#     def get_role(self, obj):
+#         if obj.staff:
+#             return obj.staff.role
+#         elif obj.receptionist:
+#             return obj.receptionist.role
+#         return None
+
+
+
+# # PROMOTION
+# class PromotionSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Promotion
+#         fields = "__all__"
+
+
+# # COMMISSION REPORT
+# class CommissionReportSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = CommissionReport
+#         fields = "__all__"
+#         read_only_fields = ["hotel", "created_at"]
+
+
+
+# class ManageBookingsSerializer(serializers.ModelSerializer):
+#     current_status = serializers.SerializerMethodField()
+
+#     class Meta:
+#         model = ManageBookings
+#         fields = "__all__"
+
+#     def get_current_status(self, obj):
+#         return obj.current_status()
+
+
+
+# class ManagePaymentsSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = ManagePayments
+#         fields = "__all__"
+
+
+
+
+
+# class EsewaTransactionSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = EsewaTransaction
+#         fields = "__all__"
+#         read_only_fields = ["created_at"]

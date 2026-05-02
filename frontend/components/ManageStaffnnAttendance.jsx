@@ -7,7 +7,7 @@ import {
   FaUsers, FaUserTie, FaPhone, FaEnvelope, FaCalendarAlt, FaChartLine,
   FaStar, FaStarHalfAlt, FaHotel, FaSpa, FaUmbrellaBeach, FaSearch,
   FaFilter, FaDownload, FaEye, FaUserCircle, FaClock, FaCheckCircle,
-  FaTimesCircle, FaToggleOn, FaToggleOff
+  FaTimesCircle, FaToggleOn, FaToggleOff, FaQuestionCircle, FaRegClock
 } from "react-icons/fa";
 
 const ManageStaffnnAttendance = () => {
@@ -16,6 +16,7 @@ const ManageStaffnnAttendance = () => {
 
   const [filter, setFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [attendanceSearchTerm, setAttendanceSearchTerm] = useState("");
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [attendance, setAttendance] = useState({});
@@ -71,7 +72,7 @@ const ManageStaffnnAttendance = () => {
     fetchData();
   }, []);
 
-  // Filter staff based on search and status
+  // Filter staff based on search and status for main view
   const filteredStaff = staff.filter(person => {
     const matchesSearch = searchTerm === "" || 
       person.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -82,6 +83,17 @@ const ManageStaffnnAttendance = () => {
     const matchesFilter = filter === "all" || person.status === filter;
     
     return matchesSearch && matchesFilter;
+  });
+
+  // Filter staff for attendance view based on search only
+  const filteredAttendanceStaff = staff.filter(person => {
+    const matchesSearch = attendanceSearchTerm === "" || 
+      person.name.toLowerCase().includes(attendanceSearchTerm.toLowerCase()) ||
+      person.email.toLowerCase().includes(attendanceSearchTerm.toLowerCase()) ||
+      person.contact.includes(attendanceSearchTerm) ||
+      person.role.toLowerCase().includes(attendanceSearchTerm.toLowerCase());
+    
+    return matchesSearch;
   });
 
   const handleProfileClick = (person) => {
@@ -122,13 +134,18 @@ const ManageStaffnnAttendance = () => {
     }
   };
 
-  // Calculate statistics (removed staffMembers)
+  // Calculate statistics based on current tab
   const stats = {
     total: staff.length,
     active: staff.filter(s => s.status === "Active").length,
     inactive: staff.filter(s => s.status === "Inactive").length,
     receptionists: staff.filter(s => s.role === "Receptionist").length,
   };
+
+  // Attendance-specific stats
+  const presentToday = staff.filter(person => attendance[person.id]?.status === "Present").length;
+  const absentToday = staff.filter(person => attendance[person.id]?.status === "Absent").length;
+  const notMarkedToday = stats.total - presentToday - absentToday;
 
   if (loading) return (
     <div className="relative min-h-screen overflow-hidden">
@@ -203,37 +220,84 @@ const ManageStaffnnAttendance = () => {
             </div>
           </div>
 
-          {/* Statistics Cards - Removed Staff Members card */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            {[
-              { label: "Total Staff", value: stats.total, icon: FaUsers, color: "from-purple-500 to-pink-500", change: "+8%", bg: "bg-purple-500/20" },
-              { label: "Active Staff", value: stats.active, icon: FaUserCheck, color: "from-green-500 to-emerald-500", change: "+12%", bg: "bg-green-500/20" },
-              { label: "Receptionists", value: stats.receptionists, icon: FaUserTie, color: "from-blue-500 to-cyan-500", change: "+3", bg: "bg-blue-500/20" },
-            ].map((stat, idx) => (
-              <div
-                key={idx}
-                className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 hover-scale animate-fadeInUp"
-                style={{ animationDelay: `${idx * 0.1}s` }}
-              >
-                <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${stat.color} opacity-10 rounded-full -translate-y-1/2 translate-x-1/2`} />
-                <div className="relative z-10">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className={`p-3 rounded-xl bg-gradient-to-br ${stat.color} bg-opacity-20`}>
-                      <stat.icon className="text-2xl text-white" />
+          {/* Conditional Statistics Cards */}
+          {tab === "view" ? (
+            // Staff Management View: Show Total Staff, Active Staff, Inactive Staff, Receptionists
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {[
+                { label: "Total Staff", value: stats.total, icon: FaUsers, color: "from-purple-500 to-pink-500", change: "+8%", bg: "bg-purple-500/20" },
+                { label: "Active Staff", value: stats.active, icon: FaUserCheck, color: "from-green-500 to-emerald-500", change: "+12%", bg: "bg-green-500/20" },
+                { label: "Inactive Staff", value: stats.inactive, icon: FaUserTimes, color: "from-red-500 to-rose-500", change: "-2%", bg: "bg-red-500/20" },
+                { label: "Receptionists", value: stats.receptionists, icon: FaUserTie, color: "from-blue-500 to-cyan-500", change: "+3", bg: "bg-blue-500/20" },
+              ].map((stat, idx) => (
+                <div
+                  key={idx}
+                  className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 hover-scale animate-fadeInUp"
+                  style={{ animationDelay: `${idx * 0.1}s` }}
+                >
+                  <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${stat.color} opacity-10 rounded-full -translate-y-1/2 translate-x-1/2`} />
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className={`p-3 rounded-xl bg-gradient-to-br ${stat.color} bg-opacity-20`}>
+                        <stat.icon className="text-2xl text-white" />
+                      </div>
+                      <span className="text-xs text-green-400 font-medium bg-green-500/20 px-2 py-1 rounded-full">
+                        {stat.change}
+                      </span>
                     </div>
-                    <span className="text-xs text-green-400 font-medium bg-green-500/20 px-2 py-1 rounded-full">
-                      {stat.change}
-                    </span>
+                    <h3 className="text-3xl font-bold text-white">{stat.value}</h3>
+                    <p className="text-sm text-gray-400 mt-1">{stat.label}</p>
                   </div>
-                  <h3 className="text-3xl font-bold text-white">{stat.value}</h3>
-                  <p className="text-sm text-gray-400 mt-1">{stat.label}</p>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            // Attendance Management View: Show Total Staff, Present Today, Absent Today, Not Marked
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {[
+                { label: "Total Staff", value: stats.total, icon: FaUsers, color: "from-purple-500 to-pink-500", change: "", bg: "bg-purple-500/20" },
+                { label: "Present Today", value: presentToday, icon: FaCheckCircle, color: "from-green-500 to-emerald-500", change: "", bg: "bg-green-500/20" },
+                { label: "Absent Today", value: absentToday, icon: FaTimesCircle, color: "from-red-500 to-rose-500", change: "", bg: "bg-red-500/20" },
+                { label: "Not Marked", value: notMarkedToday, icon: FaRegClock, color: "from-yellow-500 to-orange-500", change: "", bg: "bg-yellow-500/20" },
+              ].map((stat, idx) => (
+                <div
+                  key={idx}
+                  className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 hover-scale animate-fadeInUp"
+                  style={{ animationDelay: `${idx * 0.1}s` }}
+                >
+                  <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${stat.color} opacity-10 rounded-full -translate-y-1/2 translate-x-1/2`} />
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className={`p-3 rounded-xl bg-gradient-to-br ${stat.color} bg-opacity-20`}>
+                        <stat.icon className="text-2xl text-white" />
+                      </div>
+                    </div>
+                    <h3 className="text-3xl font-bold text-white">{stat.value}</h3>
+                    <p className="text-sm text-gray-400 mt-1">{stat.label}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Main Card */}
           <div className="rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl p-6 animate-fadeInUp">
+            {/* Search Bar for Attendance Management Table */}
+            {tab === "attendance" && (
+              <div className="flex flex-col md:flex-row gap-4 mb-6">
+                <div className="flex-1 relative">
+                  <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, email, contact, or role..."
+                    value={attendanceSearchTerm}
+                    onChange={(e) => setAttendanceSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-3 py-2.5 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 transition-all"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Search and Filter Bar - Only for View All Staffs tab */}
             {tab === "view" && (
               <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -413,7 +477,7 @@ const ManageStaffnnAttendance = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {staff.map((person, idx) => {
+                    {filteredAttendanceStaff.map((person, idx) => {
                       const att = attendance[person.id];
                       return (
                         <tr 
@@ -493,7 +557,7 @@ const ManageStaffnnAttendance = () => {
                               className="px-3 py-1.5 bg-purple-500/20 text-purple-400 rounded-lg hover:bg-purple-500/30 transition-all duration-300 flex items-center gap-1 text-xs font-medium"
                             >
                               <FaEye className="text-xs" />
-                              View History
+                              View Reports
                             </button>
                           </td>
                         </tr>
@@ -502,7 +566,7 @@ const ManageStaffnnAttendance = () => {
                   </tbody>
                 </table>
 
-                {staff.length === 0 && (
+                {filteredAttendanceStaff.length === 0 && (
                   <div className="text-center py-16">
                     <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
                       <FaCalendarCheck className="text-4xl text-purple-400" />

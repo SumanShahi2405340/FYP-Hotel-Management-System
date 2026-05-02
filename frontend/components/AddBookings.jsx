@@ -10,97 +10,62 @@ import {
   FaCalendarAlt, FaUser, FaEnvelope, FaPhone, FaDoorOpen, FaDollarSign,
   FaInfoCircle, FaCheckCircle, FaArrowLeft, FaPaperPlane, FaStar,
   FaHotel, FaSpa, FaUmbrellaBeach, FaExclamationCircle, FaChevronDown,
-  FaChevronUp, FaLightbulb
+  FaChevronUp, FaLightbulb, FaLock, FaDoorClosed
 } from "react-icons/fa";
 
-// ─── FIX: Register Chart.js Filler plugin globally ───────────────────────────
-// This prevents "Tried to use the 'fill' option without the 'Filler' plugin" error
 import {
-  Chart,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Filler,
-  Tooltip,
-  Legend,
+  Chart, CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, ArcElement, Filler, Tooltip, Legend,
 } from "chart.js";
 
 Chart.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Filler,   // ← fixes the fill error
-  Tooltip,
-  Legend
+  CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, ArcElement, Filler, Tooltip, Legend
 );
 
 // ─── Room Amenities Config ────────────────────────────────────────────────────
 const roomAmenities = {
   normal: {
-    name: "Normal Room",
-    priceRange: "$50-80",
+    name: "Normal Room", priceRange: "$50-80",
     amenities: [
-      { icon: FaWifi, name: "Free High-Speed WiFi" },
-      { icon: FaTv, name: "40-inch Smart TV" },
-      { icon: FaCoffee, name: "Coffee/Tea Maker" },
-      { icon: FaSnowflake, name: "Air Conditioning" },
-      { icon: FaShower, name: "Private Bathroom" },
-      { icon: FaBed, name: "Comfortable Queen Bed" },
+      { icon: FaWifi, name: "Free High-Speed WiFi" }, { icon: FaTv, name: "40-inch Smart TV" },
+      { icon: FaCoffee, name: "Coffee/Tea Maker" }, { icon: FaSnowflake, name: "Air Conditioning" },
+      { icon: FaShower, name: "Private Bathroom" }, { icon: FaBed, name: "Comfortable Queen Bed" },
     ],
     facilities: [
-      { icon: FaParking, name: "Free Parking" },
-      { icon: FaConciergeBell, name: "24/7 Room Service" },
+      { icon: FaParking, name: "Free Parking" }, { icon: FaConciergeBell, name: "24/7 Room Service" },
       { icon: FaUtensils, name: "Complimentary Breakfast" },
     ],
     color: "from-blue-500 to-cyan-500",
     image: "https://images.unsplash.com/photo-1566665797739-1674de7a421a?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
   },
   deluxe: {
-    name: "Deluxe Room",
-    priceRange: "$100-150",
+    name: "Deluxe Room", priceRange: "$100-150",
     amenities: [
-      { icon: FaWifi, name: "Free High-Speed WiFi" },
-      { icon: FaTv, name: "55-inch 4K Smart TV" },
-      { icon: FaCoffee, name: "Premium Coffee Machine" },
-      { icon: FaSnowflake, name: "Central AC" },
-      { icon: FaShower, name: "Luxury Bathroom" },
-      { icon: FaBed, name: "King Size Bed" },
+      { icon: FaWifi, name: "Free High-Speed WiFi" }, { icon: FaTv, name: "55-inch 4K Smart TV" },
+      { icon: FaCoffee, name: "Premium Coffee Machine" }, { icon: FaSnowflake, name: "Central AC" },
+      { icon: FaShower, name: "Luxury Bathroom" }, { icon: FaBed, name: "King Size Bed" },
       { icon: FaUtensils, name: "Mini Bar" },
     ],
     facilities: [
-      { icon: FaParking, name: "Reserved Parking" },
-      { icon: FaConciergeBell, name: "24/7 Concierge" },
-      { icon: FaUtensils, name: "Breakfast Buffet" },
-      { icon: FaSwimmingPool, name: "Pool Access" },
+      { icon: FaParking, name: "Reserved Parking" }, { icon: FaConciergeBell, name: "24/7 Concierge" },
+      { icon: FaUtensils, name: "Breakfast Buffet" }, { icon: FaSwimmingPool, name: "Pool Access" },
       { icon: FaDumbbell, name: "Gym Access" },
     ],
     color: "from-purple-500 to-pink-500",
     image: "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
   },
   suite: {
-    name: "Suite Room",
-    priceRange: "$200-300",
+    name: "Suite Room", priceRange: "$200-300",
     amenities: [
-      { icon: FaWifi, name: "Ultra Fast WiFi" },
-      { icon: FaTv, name: "65-inch OLED TV" },
-      { icon: FaCoffee, name: "Espresso Machine" },
-      { icon: FaSnowflake, name: "Climate Control" },
-      { icon: FaShower, name: "Spa Bathroom" },
-      { icon: FaBed, name: "Super King Bed" },
-      { icon: FaUtensils, name: "Stocked Mini Bar" },
-      { icon: FaConciergeBell, name: "Butler Service" },
+      { icon: FaWifi, name: "Ultra Fast WiFi" }, { icon: FaTv, name: "65-inch OLED TV" },
+      { icon: FaCoffee, name: "Espresso Machine" }, { icon: FaSnowflake, name: "Climate Control" },
+      { icon: FaShower, name: "Spa Bathroom" }, { icon: FaBed, name: "Super King Bed" },
+      { icon: FaUtensils, name: "Stocked Mini Bar" }, { icon: FaConciergeBell, name: "Butler Service" },
     ],
     facilities: [
-      { icon: FaParking, name: "VIP Parking" },
-      { icon: FaConciergeBell, name: "Personal Butler" },
-      { icon: FaUtensils, name: "Gourmet Breakfast" },
-      { icon: FaSwimmingPool, name: "Private Pool" },
+      { icon: FaParking, name: "VIP Parking" }, { icon: FaConciergeBell, name: "Personal Butler" },
+      { icon: FaUtensils, name: "Gourmet Breakfast" }, { icon: FaSwimmingPool, name: "Private Pool" },
       { icon: FaDumbbell, name: "Personal Gym" },
     ],
     color: "from-orange-500 to-red-500",
@@ -108,7 +73,6 @@ const roomAmenities = {
   }
 };
 
-// ─── Suggested Questions ──────────────────────────────────────────────────────
 const SUGGESTED_QUESTIONS = [
   { emoji: "🏨", text: "How many rooms are available right now?" },
   { emoji: "💰", text: "What is the cheapest available room?" },
@@ -124,7 +88,6 @@ const SUGGESTED_QUESTIONS = [
   { emoji: "📅", text: "Which rooms will be free in 2 days?" },
 ];
 
-// ─── Helper: extract room type from room number ───────────────────────────────
 const getRoomType = (roomNumber) => {
   const n = parseInt(roomNumber);
   if (n >= 101 && n <= 199) return "normal";
@@ -133,19 +96,40 @@ const getRoomType = (roomNumber) => {
   return null;
 };
 
-// ─── FIX: Robust room number extractor ───────────────────────────────────────
-// Handles formats: "101", "101 / Normal", "Room 101", "normal", "deluxe", "suite"
 const extractRoomNumber = (roomStr) => {
   if (!roomStr) return null;
   const match = roomStr.toString().match(/\d+/);
   return match ? parseInt(match[0]) : null;
 };
 
+// ── FIX: Correct room status from checkin/checkout ────────────────────────────
+// Returns "available" | "occupied" | "booked"
+const getRoomStatus = (checkin, checkout) => {
+  if (!checkin) return "available";
+  const now      = new Date();
+  const checkIn  = new Date(checkin);
+  const checkOut = checkout ? new Date(checkout) : null;
+  if (checkOut && now >= checkOut) return "available";
+  if (now >= checkIn)              return "occupied";
+  return "booked";
+};
+
+// ── FIX: Calculate nights + total price from date range ───────────────────────
+const calcPriceFromDates = (checkin, checkout, pricePerNight) => {
+  if (!checkin || !checkout || !pricePerNight) return null;
+  const ms   = new Date(checkout) - new Date(checkin);
+  if (ms <= 0) return null;
+  const days    = Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)));
+  const rawTotal = days * parseFloat(pricePerNight);
+  const discount = days >= 3 ? 0.1 : 0;
+  const total    = rawTotal * (1 - discount);
+  return { days, rawTotal, total, discount: discount > 0 };
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 const AddBookings = () => {
   const router = useRouter();
 
-  // ── Form state ──────────────────────────────────────────────────────────────
   const [formData, setFormData] = useState({
     name: "", email: "", contact: "", room: "", days: "", checkin: "", checkout: ""
   });
@@ -154,7 +138,6 @@ const AddBookings = () => {
   const [showSuccess, setShowSuccess]           = useState(false);
   const [selectedRoomType, setSelectedRoomType] = useState(null);
 
-  // ── API data state ──────────────────────────────────────────────────────────
   const [prices, setPrices]           = useState(null);
   const [inventory, setInventory]     = useState(null);
   const [allRooms, setAllRooms]       = useState([]);
@@ -162,26 +145,23 @@ const AddBookings = () => {
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError]     = useState(null);
 
-  // ── Chatbot state ───────────────────────────────────────────────────────────
-  const [showChatbot, setShowChatbot]           = useState(false);
-  const [showSuggestions, setShowSuggestions]   = useState(true);
-  const [chatMessages, setChatMessages]         = useState([
-    {
-      type: "bot",
-      text: "👋 Hi! I'm your AI Booking Assistant powered by real-time hotel data.\n\nI can answer questions like:\n• How many rooms are available right now?\n• Which suite rooms are free?\n• What's the cheapest option today?\n• Who is checking out soon?\n• Which room is best for my budget?\n\nTap a suggestion below or ask me anything! 🏨"
-    }
-  ]);
-  const [chatInput, setChatInput]               = useState("");
-  const [isTyping, setIsTyping]                 = useState(false);
-  const [chatPosition, setChatPosition]         = useState({ x: 20, y: 80 });
-  const [isDragging, setIsDragging]             = useState(false);
-  const [dragOffset, setDragOffset]             = useState({ x: 0, y: 0 });
+  const [showChatbot, setShowChatbot]         = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(true);
+  const [chatMessages, setChatMessages]       = useState([{
+    type: "bot",
+    text: "👋 Hi! I'm your AI Booking Assistant powered by real-time hotel data.\n\nI can answer questions like:\n• How many rooms are available right now?\n• Which suite rooms are free?\n• What's the cheapest option today?\n• Who is checking out soon?\n• Which room is best for my budget?\n\nTap a suggestion below or ask me anything! 🏨"
+  }]);
+  const [chatInput, setChatInput]             = useState("");
+  const [isTyping, setIsTyping]               = useState(false);
+  const [chatPosition, setChatPosition]       = useState({ x: 20, y: 80 });
+  const [isDragging, setIsDragging]           = useState(false);
+  const [dragOffset, setDragOffset]           = useState({ x: 0, y: 0 });
 
   const messagesEndRef = useRef(null);
   const chatInputRef   = useRef(null);
   const chatbotRef     = useRef(null);
 
-  // ── Fetch all real data once on mount ──────────────────────────────────────
+  // ── Fetch all data ──────────────────────────────────────────────────────────
   useEffect(() => {
     const fetchAll = async () => {
       setDataLoading(true);
@@ -205,9 +185,7 @@ const AddBookings = () => {
 
         const rooms = [];
         const push = (count, type, price, start) => {
-          for (let i = 0; i < count; i++) {
-            rooms.push({ number: start + i, type, price });
-          }
+          for (let i = 0; i < count; i++) rooms.push({ number: start + i, type, price });
         };
         push(inv.normal_rooms, "Normal", pr.normal_price, 101);
         push(inv.deluxe_rooms, "Deluxe", pr.deluxe_price, 201);
@@ -223,37 +201,31 @@ const AddBookings = () => {
     fetchAll();
   }, []);
 
-  // ── FIX: Real-time occupancy check ─────────────────────────────────────────
-  // A room is occupied only if now >= checkin AND now < checkout
-  // Uses regex to extract the room number from any format like "101 / Normal"
-  const isOccupied = useCallback((roomNumber) => {
-    const now = new Date();
-    return bookings.some((b) => {
+  // ── FIX: Correct occupancy using getRoomStatus ─────────────────────────────
+  const getRoomStatusForRoom = useCallback((roomNumber) => {
+    const booking = bookings.find((b) => {
       if (!b.room) return false;
-
-      // ✅ Robustly extract number from "101 / Normal", "Room 101", "101", etc.
-      const extractedNum = extractRoomNumber(b.room);
-      if (extractedNum === null) return false;
-      if (extractedNum !== roomNumber) return false;
-
-      // ✅ Only count as occupied if currently checked in (now between checkin and checkout)
-      const checkin  = b.checkin  ? new Date(b.checkin)  : null;
-      const checkout = b.checkout ? new Date(b.checkout) : null;
-
-      // If no dates at all, treat as occupied (safety)
-      if (!checkin) return false;
-
-      // If only checkin provided, treat as occupied from checkin onwards
-      if (!checkout) return now >= checkin;
-
-      // ✅ Core check: must be between checkin and checkout
-      return now >= checkin && now < checkout;
+      const extracted = extractRoomNumber(b.room);
+      if (extracted !== roomNumber) return false;
+      const s = getRoomStatus(b.checkin, b.checkout);
+      return s === "occupied" || s === "booked";
     });
+    if (!booking) return "available";
+    return getRoomStatus(booking.checkin, booking.checkout);
   }, [bookings]);
 
+  const isOccupied = useCallback(
+    (roomNumber) => getRoomStatusForRoom(roomNumber) !== "available",
+    [getRoomStatusForRoom]
+  );
+
   const enrichedRooms = useMemo(
-    () => allRooms.map((r) => ({ ...r, isAvailable: !isOccupied(r.number) })),
-    [allRooms, isOccupied]
+    () => allRooms.map((r) => ({
+      ...r,
+      roomStatus:  getRoomStatusForRoom(r.number),
+      isAvailable: getRoomStatusForRoom(r.number) === "available",
+    })),
+    [allRooms, getRoomStatusForRoom]
   );
 
   const availableRooms = useMemo(
@@ -261,7 +233,6 @@ const AddBookings = () => {
     [enrichedRooms]
   );
 
-  // ── Scroll chat to bottom ───────────────────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
@@ -294,25 +265,23 @@ const AddBookings = () => {
     };
   }, [isDragging, dragOffset]);
 
-  // ── Send message to Claude chatbot ─────────────────────────────────────────
+  // ── Chat handler ────────────────────────────────────────────────────────────
   const handleSendMessage = async (overrideText = null) => {
     const userMsg = (overrideText ?? chatInput).trim();
     if (!userMsg || isTyping) return;
 
     const historyToSend = chatMessages.slice(-10);
-
     setChatMessages((prev) => [...prev, { type: "user", text: userMsg }]);
     setChatInput("");
     setIsTyping(true);
     setShowSuggestions(false);
 
-    // ── Build accurate per-type availability summary for the AI ──────────────
-    const normalAvail  = enrichedRooms.filter(r => r.type === "Normal" && r.isAvailable);
-    const deluxeAvail  = enrichedRooms.filter(r => r.type === "Deluxe" && r.isAvailable);
-    const suiteAvail   = enrichedRooms.filter(r => r.type === "Suite"  && r.isAvailable);
-    const normalOccup  = enrichedRooms.filter(r => r.type === "Normal" && !r.isAvailable);
-    const deluxeOccup  = enrichedRooms.filter(r => r.type === "Deluxe" && !r.isAvailable);
-    const suiteOccup   = enrichedRooms.filter(r => r.type === "Suite"  && !r.isAvailable);
+    const normalAvail = enrichedRooms.filter(r => r.type === "Normal" && r.isAvailable);
+    const deluxeAvail = enrichedRooms.filter(r => r.type === "Deluxe" && r.isAvailable);
+    const suiteAvail  = enrichedRooms.filter(r => r.type === "Suite"  && r.isAvailable);
+    const normalOccup = enrichedRooms.filter(r => r.type === "Normal" && !r.isAvailable);
+    const deluxeOccup = enrichedRooms.filter(r => r.type === "Deluxe" && !r.isAvailable);
+    const suiteOccup  = enrichedRooms.filter(r => r.type === "Suite"  && !r.isAvailable);
 
     try {
       const res = await fetch("/api/hotel-chat", {
@@ -322,36 +291,14 @@ const AddBookings = () => {
           message: userMsg,
           history: historyToSend,
           context: {
-            // ✅ Send full enriched room list with correct isAvailable flag
             rooms: enrichedRooms,
-
-            // ✅ Send explicit available/occupied room numbers so AI can't be confused
             availability: {
-              normal: {
-                total:     inventory?.normal_rooms ?? 0,
-                available: normalAvail.length,
-                occupied:  normalOccup.length,
-                availableRooms: normalAvail.map(r => r.number),
-                occupiedRooms:  normalOccup.map(r => r.number),
-              },
-              deluxe: {
-                total:     inventory?.deluxe_rooms ?? 0,
-                available: deluxeAvail.length,
-                occupied:  deluxeOccup.length,
-                availableRooms: deluxeAvail.map(r => r.number),
-                occupiedRooms:  deluxeOccup.map(r => r.number),
-              },
-              suite: {
-                total:     inventory?.suite_rooms ?? 0,
-                available: suiteAvail.length,
-                occupied:  suiteOccup.length,
-                availableRooms: suiteAvail.map(r => r.number),
-                occupiedRooms:  suiteOccup.map(r => r.number),
-              },
+              normal: { total: inventory?.normal_rooms ?? 0, available: normalAvail.length, occupied: normalOccup.length, availableRooms: normalAvail.map(r => r.number), occupiedRooms: normalOccup.map(r => r.number) },
+              deluxe: { total: inventory?.deluxe_rooms ?? 0, available: deluxeAvail.length, occupied: deluxeOccup.length, availableRooms: deluxeAvail.map(r => r.number), occupiedRooms: deluxeOccup.map(r => r.number) },
+              suite:  { total: inventory?.suite_rooms  ?? 0, available: suiteAvail.length,  occupied: suiteOccup.length,  availableRooms: suiteAvail.map(r => r.number),  occupiedRooms: suiteOccup.map(r => r.number) },
               totalAvailable: availableRooms.length,
               totalRooms:     enrichedRooms.length,
             },
-
             bookings,
             prices:    prices    ?? {},
             inventory: inventory ?? {},
@@ -370,10 +317,7 @@ const AddBookings = () => {
       console.error("Chat error:", err);
       setChatMessages((prev) => [
         ...prev,
-        {
-          type: "bot",
-          text: `⚠️ ${err.message || "Connection error. Please try again."}\n\nMake sure your API route is set up at /api/hotel-chat`
-        }
+        { type: "bot", text: `⚠️ ${err.message || "Connection error. Please try again."}` }
       ]);
     } finally {
       setIsTyping(false);
@@ -381,23 +325,17 @@ const AddBookings = () => {
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); }
   };
-
   const handleSuggestionClick = (text) => handleSendMessage(text);
 
-  // ── Price calculator ────────────────────────────────────────────────────────
+  // ── FIX: Price calculator — prefers dates, falls back to days field ─────────
   const priceInfo = useMemo(() => {
-    if (!prices || !formData.days || !formData.room) return null;
-    const days = Number(formData.days);
-    if (!days || days < 1) return null;
+    if (!prices || !formData.room) return null;
 
+    // Determine unit price from room input
     const room = formData.room.toLowerCase();
     let unitPrice = 0;
-
     if      (room.includes("normal")) unitPrice = prices.normal_price;
     else if (room.includes("deluxe")) unitPrice = prices.deluxe_price;
     else if (room.includes("suite"))  unitPrice = prices.suite_price;
@@ -409,14 +347,24 @@ const AddBookings = () => {
         else if (num >= 301 && num <= 399) unitPrice = prices.suite_price;
       }
     }
-
     if (!unitPrice) return null;
+
+    // ── FIX: Prefer dates; fall back to days field ──────────────────────────
+    let days = 0;
+    if (formData.checkin && formData.checkout) {
+      const ms = new Date(formData.checkout) - new Date(formData.checkin);
+      if (ms > 0) days = Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)));
+    }
+    if (!days && formData.days) days = Number(formData.days);
+    if (!days || days < 1) return null;
+
     const rawTotal = days * parseFloat(unitPrice);
     const discount = days >= 3 ? 0.1 : 0;
     const total    = rawTotal * (1 - discount);
 
     return {
       unit: unitPrice,
+      days,
       total,
       rawTotal,
       discount: discount > 0,
@@ -424,7 +372,14 @@ const AddBookings = () => {
         ? `$${unitPrice} × ${days} day${days > 1 ? "s" : ""} − 10% discount = $${total.toFixed(2)}`
         : `$${unitPrice} × ${days} day${days > 1 ? "s" : ""} = $${total.toFixed(2)}`,
     };
-  }, [prices, formData.days, formData.room]);
+  }, [prices, formData.room, formData.checkin, formData.checkout, formData.days]);
+
+  // ── FIX: Check if the selected room number is already taken ────────────────
+  const selectedRoomStatus = useMemo(() => {
+    const num = extractRoomNumber(formData.room);
+    if (!num) return "available";
+    return getRoomStatusForRoom(num);
+  }, [formData.room, getRoomStatusForRoom]);
 
   // ── Validation ──────────────────────────────────────────────────────────────
   const validateForm = () => {
@@ -434,13 +389,28 @@ const AddBookings = () => {
     else if (!/\S+@\S+\.\S+/.test(formData.email)) e.email = "Invalid email address";
     if (!formData.contact.trim()) e.contact = "Contact is required";
     if (!formData.room.trim())    e.room    = "Room is required";
-    if (!formData.days || formData.days < 1) e.days = "Enter a valid number of days";
-    if (!formData.checkin)        e.checkin  = "Check-in date is required";
-    if (!formData.checkout)       e.checkout = "Check-out date is required";
+
+    // ── FIX: Warn if room is already booked/occupied ──────────────────────
+    if (formData.room.trim() && selectedRoomStatus !== "available") {
+      e.room = `Room ${extractRoomNumber(formData.room)} is currently ${selectedRoomStatus} — please choose another room.`;
+    }
+
+    if (!formData.checkin)  e.checkin  = "Check-in date is required";
+    if (!formData.checkout) e.checkout = "Check-out date is required";
     if (formData.checkin && formData.checkout &&
         new Date(formData.checkin) >= new Date(formData.checkout)) {
       e.checkout = "Check-out must be after check-in";
     }
+
+    // Auto-fill days from dates if not set
+    if (!formData.days && formData.checkin && formData.checkout) {
+      const ms   = new Date(formData.checkout) - new Date(formData.checkin);
+      const days = Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)));
+      setFormData((p) => ({ ...p, days: String(days) }));
+    } else if (!formData.days || formData.days < 1) {
+      e.days = "Enter a valid number of days";
+    }
+
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -450,11 +420,18 @@ const AddBookings = () => {
     ev.preventDefault();
     if (!validateForm()) return;
 
+    // Auto-calculate days from dates
+    let days = Number(formData.days);
+    if (formData.checkin && formData.checkout) {
+      const ms = new Date(formData.checkout) - new Date(formData.checkin);
+      if (ms > 0) days = Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)));
+    }
+
     setLoading(true);
     try {
       await api.post("/api/manage-bookings/", {
         ...formData,
-        days:     Number(formData.days),
+        days,
         checkin:  new Date(formData.checkin).toISOString(),
         checkout: new Date(formData.checkout).toISOString(),
         status: "Booked",
@@ -504,7 +481,7 @@ const AddBookings = () => {
   return (
     <div className="relative min-h-screen overflow-hidden">
 
-      {/* ── Background ──────────────────────────────────────────────────── */}
+      {/* Background */}
       <div
         className="fixed inset-0 bg-cover bg-center bg-fixed z-0"
         style={{ backgroundImage: `url('https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')` }}
@@ -520,15 +497,13 @@ const AddBookings = () => {
         </div>
       </div>
 
-      {/* ── Page content ────────────────────────────────────────────────── */}
       <div className="relative z-10 min-h-screen p-8">
 
         <button
           onClick={() => router.back()}
           className="mb-6 flex items-center gap-2 px-5 py-2.5 bg-white/10 backdrop-blur-md hover:bg-white/20 rounded-xl text-white transition-all duration-300 border border-white/20 shadow-lg hover:shadow-xl transform hover:scale-105"
         >
-          <FaArrowLeft className="text-sm" />
-          Back to Dashboard
+          <FaArrowLeft className="text-sm" />Back to Dashboard
         </button>
 
         {dataError && (
@@ -558,8 +533,7 @@ const AddBookings = () => {
                 </div>
                 {dataLoading ? (
                   <div className="mt-3 inline-flex items-center gap-2 px-4 py-1.5 bg-gray-500/20 border border-gray-500/40 rounded-full text-gray-400 text-sm">
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
-                    Loading live room data...
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />Loading live room data...
                   </div>
                 ) : (
                   <div className="mt-3 inline-flex items-center gap-2 px-4 py-1.5 bg-green-500/20 border border-green-500/40 rounded-full text-green-400 text-sm">
@@ -573,7 +547,7 @@ const AddBookings = () => {
 
           <div className="grid lg:grid-cols-3 gap-8">
 
-            {/* ── Booking Form ─────────────────────────────────────────── */}
+            {/* ── Booking Form ──────────────────────────────────────────── */}
             <div className="lg:col-span-2">
               <div className="rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl p-6 animate-fadeInUp">
 
@@ -608,8 +582,7 @@ const AddBookings = () => {
                   {/* Guest Information */}
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                      <div className="w-1 h-6 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />
-                      Guest Information
+                      <div className="w-1 h-6 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />Guest Information
                     </h3>
                     <div className="grid md:grid-cols-2 gap-4">
 
@@ -655,7 +628,25 @@ const AddBookings = () => {
                             className={inputCls("room")} />
                         </div>
                         {errors.room && <p className="text-red-400 text-xs mt-1">{errors.room}</p>}
-                        {selectedRoomType && (
+
+                        {/* ── FIX: Show live room status under the room input ── */}
+                        {formData.room && extractRoomNumber(formData.room) && (
+                          <p className={`text-xs mt-1 flex items-center gap-1 ${
+                            selectedRoomStatus === "available"
+                              ? "text-green-400"
+                              : selectedRoomStatus === "booked"
+                                ? "text-amber-400"
+                                : "text-red-400"
+                          }`}>
+                            {selectedRoomStatus === "available"
+                              ? <><FaDoorOpen className="text-[10px]" /> Room {extractRoomNumber(formData.room)} is available</>
+                              : selectedRoomStatus === "booked"
+                                ? <><FaLock className="text-[10px]" /> Room {extractRoomNumber(formData.room)} is already booked</>
+                                : <><FaDoorClosed className="text-[10px]" /> Room {extractRoomNumber(formData.room)} is currently occupied</>}
+                          </p>
+                        )}
+
+                        {selectedRoomType && selectedRoomStatus === "available" && (
                           <p className="text-purple-400 text-xs mt-1 animate-pulse">
                             💡 {roomAmenities[selectedRoomType]?.name} selected
                           </p>
@@ -667,16 +658,23 @@ const AddBookings = () => {
                   {/* Stay Details */}
                   <div className="space-y-4 pt-4 border-t border-white/20">
                     <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                      <div className="w-1 h-6 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />
-                      Stay Details
+                      <div className="w-1 h-6 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />Stay Details
                     </h3>
                     <div className="grid md:grid-cols-3 gap-4">
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Number of Days *</label>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Number of Days
+                          <span className="text-gray-500 text-xs ml-1">(auto-calc from dates)</span>
+                        </label>
                         <div className="relative group">
                           <FaCalendarAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-hover:text-purple-400 transition-colors" />
-                          <input type="number" min="1" value={formData.days} placeholder="2"
+                          <input type="number" min="1" value={
+                            // ── FIX: show auto-calculated days from date range ──
+                            formData.checkin && formData.checkout
+                              ? (() => { const ms = new Date(formData.checkout) - new Date(formData.checkin); return ms > 0 ? Math.max(1, Math.round(ms / 86400000)) : formData.days; })()
+                              : formData.days
+                          } placeholder="2"
                             onChange={(e) => setFormData((p) => ({ ...p, days: e.target.value }))}
                             className={inputCls("days")} />
                         </div>
@@ -684,7 +682,7 @@ const AddBookings = () => {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Check-in Date & Time *</label>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Check-in Date &amp; Time *</label>
                         <input type="datetime-local" value={formData.checkin}
                           onChange={(e) => setFormData((p) => ({ ...p, checkin: e.target.value }))}
                           className={`w-full px-3 py-2.5 bg-white/5 backdrop-blur-sm border rounded-xl text-white focus:outline-none focus:border-purple-500 transition-all duration-300 ${errors.checkin ? "border-red-500" : "border-white/20"}`} />
@@ -692,7 +690,7 @@ const AddBookings = () => {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Check-out Date & Time *</label>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Check-out Date &amp; Time *</label>
                         <input type="datetime-local" value={formData.checkout}
                           onChange={(e) => setFormData((p) => ({ ...p, checkout: e.target.value }))}
                           className={`w-full px-3 py-2.5 bg-white/5 backdrop-blur-sm border rounded-xl text-white focus:outline-none focus:border-purple-500 transition-all duration-300 ${errors.checkout ? "border-red-500" : "border-white/20"}`} />
@@ -701,7 +699,7 @@ const AddBookings = () => {
                     </div>
                   </div>
 
-                  {/* Price Summary */}
+                  {/* ── FIX: Price Summary from dates ─────────────────────── */}
                   {priceInfo && (
                     <div className="p-5 bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur-sm rounded-xl border border-purple-500/50 shadow-lg transform hover:scale-[1.02] transition-all duration-300">
                       <div className="flex items-center justify-between">
@@ -713,7 +711,7 @@ const AddBookings = () => {
                             <span className="text-white font-semibold text-lg">Total Price</span>
                             <p className="text-xs text-gray-300">{priceInfo.formatted}</p>
                             {priceInfo.discount && (
-                              <p className="text-xs text-green-400 font-semibold">🎉 10% discount applied!</p>
+                              <p className="text-xs text-green-400 font-semibold">🎉 10% discount applied for 3+ nights!</p>
                             )}
                           </div>
                         </div>
@@ -724,19 +722,22 @@ const AddBookings = () => {
                           <p className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
                             ${priceInfo.total.toFixed(2)}
                           </p>
+                          <p className="text-xs text-gray-400">{priceInfo.days} night{priceInfo.days > 1 ? "s" : ""}</p>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Submit */}
+                  {/* Submit — disabled if room is taken */}
                   <button
                     type="submit"
-                    disabled={loading || dataLoading}
+                    disabled={loading || dataLoading || selectedRoomStatus !== "available"}
                     className="w-full py-3.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-semibold hover:opacity-90 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105"
                   >
                     {loading ? (
                       <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />Creating Booking...</>
+                    ) : selectedRoomStatus !== "available" ? (
+                      <><FaLock className="text-sm" />Room Unavailable — Choose Another</>
                     ) : (
                       <><FaPlus className="text-sm" />Create Booking</>
                     )}
@@ -779,9 +780,6 @@ const AddBookings = () => {
                               <f.icon className="text-xs text-pink-400" /><span>{f.name}</span>
                             </div>
                           ))}
-                          {roomAmenities[selectedRoomType].facilities.length > 3 && (
-                            <p className="text-xs text-gray-500">+{roomAmenities[selectedRoomType].facilities.length - 3} more</p>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -799,9 +797,12 @@ const AddBookings = () => {
                   </div>
                   <div className="space-y-2 text-xs text-gray-300">
                     {[
-                      { label: "Normal", range: "101–199", price: prices.normal_price, total: inventory.normal_rooms, avail: enrichedRooms.filter(r => r.type === "Normal" && r.isAvailable).length },
-                      { label: "Deluxe", range: "201–299", price: prices.deluxe_price, total: inventory.deluxe_rooms, avail: enrichedRooms.filter(r => r.type === "Deluxe" && r.isAvailable).length },
-                      { label: "Suite",  range: "301–399", price: prices.suite_price,  total: inventory.suite_rooms,  avail: enrichedRooms.filter(r => r.type === "Suite"  && r.isAvailable).length },
+                      { label: "Normal", range: "101–199", price: prices.normal_price, total: inventory.normal_rooms,
+                        avail: enrichedRooms.filter(r => r.type === "Normal" && r.isAvailable).length },
+                      { label: "Deluxe", range: "201–299", price: prices.deluxe_price, total: inventory.deluxe_rooms,
+                        avail: enrichedRooms.filter(r => r.type === "Deluxe" && r.isAvailable).length },
+                      { label: "Suite",  range: "301–399", price: prices.suite_price,  total: inventory.suite_rooms,
+                        avail: enrichedRooms.filter(r => r.type === "Suite"  && r.isAvailable).length },
                     ].map((row) => (
                       <div key={row.label} className="flex items-center justify-between py-1.5 border-b border-white/10 last:border-0">
                         <div>
@@ -833,6 +834,7 @@ const AddBookings = () => {
                     "Normal: 101-199 · Deluxe: 201-299 · Suite: 301-399",
                     "All rooms include complimentary breakfast",
                     "Book 3+ nights for a 10% discount",
+                    "Price auto-calculates from your selected dates",
                   ].map((tip, i) => (
                     <li key={i} className="flex items-start gap-2">
                       <span className="text-purple-400">•</span><span>{tip}</span>
@@ -854,24 +856,18 @@ const AddBookings = () => {
         </div>
       </div>
 
-      {/* ── AI Chatbot ───────────────────────────────────────────────────── */}
+      {/* ── AI Chatbot ─────────────────────────────────────────────────────── */}
       {showChatbot && (
         <div
           ref={chatbotRef}
           style={{
-            position: "fixed",
-            left: `${chatPosition.x}px`,
-            top: `${chatPosition.y}px`,
-            width: "440px",
-            maxHeight: "700px",
-            zIndex: 99999,
-            userSelect: "none",
-            cursor: isDragging ? "grabbing" : "default",
+            position: "fixed", left: `${chatPosition.x}px`, top: `${chatPosition.y}px`,
+            width: "440px", maxHeight: "700px", zIndex: 99999,
+            userSelect: "none", cursor: isDragging ? "grabbing" : "default",
           }}
         >
           <div className="bg-gradient-to-b from-gray-900/98 to-gray-800/98 backdrop-blur-xl rounded-2xl shadow-2xl border border-purple-500/30 flex flex-col overflow-hidden" style={{ maxHeight: "700px" }}>
 
-            {/* Header */}
             <div
               className="chatbot-drag-handle p-4 border-b border-white/10 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-t-2xl select-none flex-shrink-0"
               onMouseDown={handleMouseDown}
@@ -911,7 +907,6 @@ const AddBookings = () => {
               </div>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0" style={{ maxHeight: "380px" }}>
               {chatMessages.map((msg, idx) => (
                 <div key={idx} className={`flex ${msg.type === "user" ? "justify-end" : "justify-start"}`}>
@@ -924,9 +919,7 @@ const AddBookings = () => {
                     msg.type === "user"
                       ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-br-none"
                       : "bg-white/10 backdrop-blur-sm text-gray-200 rounded-bl-none border border-white/10"
-                  }`}>
-                    {msg.text}
-                  </div>
+                  }`}>{msg.text}</div>
                 </div>
               ))}
 
@@ -946,70 +939,49 @@ const AddBookings = () => {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Suggested Questions */}
             <div className="flex-shrink-0 border-t border-white/10 bg-gray-900/40">
               <button
                 onClick={() => setShowSuggestions((v) => !v)}
                 className="w-full flex items-center justify-between px-4 py-2 text-xs text-gray-400 hover:text-gray-300 hover:bg-white/5 transition"
               >
                 <div className="flex items-center gap-1">
-                  <FaLightbulb className="text-yellow-500 text-xs" />
-                  <span>Suggested questions</span>
+                  <FaLightbulb className="text-yellow-500 text-xs" /><span>Suggested questions</span>
                 </div>
                 {showSuggestions ? <FaChevronDown className="text-xs" /> : <FaChevronUp className="text-xs" />}
               </button>
-
               {showSuggestions && (
                 <div className="px-3 pb-2 flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
                   {SUGGESTED_QUESTIONS.map((q, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handleSuggestionClick(q.text)}
-                      disabled={isTyping}
-                      className="flex items-center gap-1 px-2.5 py-1 bg-white/5 hover:bg-purple-500/20 border border-white/10 hover:border-purple-500/40 rounded-lg text-xs text-gray-300 hover:text-white transition-all duration-200 disabled:opacity-40"
-                    >
-                      <span>{q.emoji}</span>
-                      <span className="truncate max-w-[160px]">{q.text}</span>
+                    <button key={i} onClick={() => handleSuggestionClick(q.text)} disabled={isTyping}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-white/5 hover:bg-purple-500/20 border border-white/10 hover:border-purple-500/40 rounded-lg text-xs text-gray-300 hover:text-white transition-all duration-200 disabled:opacity-40">
+                      <span>{q.emoji}</span><span className="truncate max-w-[160px]">{q.text}</span>
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Input */}
             <div className="flex-shrink-0 p-4 border-t border-white/10 bg-gray-900/60">
               <div className="flex gap-2">
-                <input
-                  ref={chatInputRef}
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={handleKeyPress}
+                <input ref={chatInputRef} type="text" value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)} onKeyDown={handleKeyPress}
                   placeholder="Ask anything about rooms, prices, availability..."
                   disabled={isTyping}
                   className="flex-1 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 text-sm disabled:opacity-50 transition-colors"
                 />
-                <button
-                  onClick={() => handleSendMessage()}
-                  disabled={isTyping || !chatInput.trim()}
-                  className="px-4 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
-                >
+                <button onClick={() => handleSendMessage()} disabled={isTyping || !chatInput.trim()}
+                  className="px-4 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center">
                   <FaPaperPlane />
                 </button>
               </div>
-              <p className="text-xs text-gray-600 mt-2 text-center">
-                Powered by Claude AI · Using live database data
-              </p>
+              <p className="text-xs text-gray-600 mt-2 text-center">Powered by Claude AI · Using live database data</p>
             </div>
           </div>
         </div>
       )}
 
       <style jsx global>{`
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fadeInUp { animation: fadeInUp 0.5s ease forwards; }
         .delay-1000 { animation-delay: 1s; }
         .delay-2000 { animation-delay: 2s; }

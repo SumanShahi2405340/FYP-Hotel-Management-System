@@ -408,7 +408,7 @@ export default function PaymentsPage() {
                   <FaQrcode className="text-4xl text-orange-400" />
                 </div>
                 <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent mb-3">
-                  Manage Payments
+                   Payment Records
                 </h1>
                 <p className="text-gray-300 text-lg">Track bills, add charges, and process payments</p>
                 <div className="flex justify-center gap-1 mt-2">
