@@ -47,13 +47,13 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
 ] 
 
 # CORS Settings
@@ -85,8 +85,8 @@ SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Use database for sessi
 SESSION_COOKIE_AGE = 1209600  # 2 weeks
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
-SESSION_COOKIE_SAMESITE = 'None'  # Changed from 'None' for better compatibility
-SESSION_COOKIE_SECURE = False  # Set to False for development (True for HTTPS in production)
+SESSION_COOKIE_SAMESITE = 'Lax'  # Use Lax for local HTTP development; use 'None' + Secure=True only on HTTPS
+SESSION_COOKIE_SECURE = False  # True only in production with HTTPS
 SESSION_COOKIE_HTTPONLY = True
 
 # Cache configuration for OTP storage - OPTIMIZED

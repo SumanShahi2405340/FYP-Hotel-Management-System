@@ -12,15 +12,14 @@ import {
   FaCocktail, FaSpa, FaPlane, FaDog, FaHeart, FaRegHeart, FaShareAlt,
   FaChevronLeft, FaTag, FaDoorOpen, FaDoorClosed, FaLock, FaHotel,
   FaFilter, FaPlus, FaMap, FaExternalLinkAlt,
-  FaRobot, FaTimes, FaGripVertical, FaShower, FaSwimmingPool,
-  FaDollarSign, FaUser, FaPhone, FaPaperPlane, FaLightbulb,
+  FaTimes, FaShower, FaSwimmingPool,
   FaChevronDown, FaChevronUp, FaExclamationCircle, FaDirections, FaRoute, FaCopy, FaLocationArrow,
   FaPause, FaPlay, FaCity, FaDesktop, FaUmbrellaBeach
 } from 'react-icons/fa';
 import guestApi from '../utils/guestApi';
 
 /* ══════════════════════════════════════════════════════════════════════
-   SHARED HELPERS (unchanged except USD formatting)
+   SHARED HELPERS
 ══════════════════════════════════════════════════════════════════════ */
 const FALLBACK_IMGS = [
   'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1200&q=80',
@@ -37,7 +36,6 @@ const StarRating = ({ rating }) => (
   </div>
 );
 
-// Replace NPR formatting with USD formatting
 const formatUSD = (amount) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(amount);
 
@@ -47,8 +45,16 @@ const extractRoomNumber = (roomStr) => {
   return match ? parseInt(match[0]) : null;
 };
 
+const mapRoomTypeDisplay = (type) => {
+  const lower = type?.toLowerCase();
+  if (lower === 'standard') return 'Normal';
+  if (lower === 'deluxe') return 'Deluxe';
+  if (lower === 'suite') return 'Suite';
+  return type || 'Room';
+};
+
 /* ══════════════════════════════════════════════════════════════════════
-   ROOM AMENITIES CONFIG (updated to USD)
+   ROOM AMENITIES CONFIG (fallback)
 ══════════════════════════════════════════════════════════════════════ */
 const roomAmenities = {
   normal: {
@@ -110,6 +116,8 @@ const SUGGESTED_QUESTIONS = [
   { emoji: '🏷️', text: 'Show me all room prices and amenities' },
   { emoji: '🔢', text: 'How many rooms are currently booked?' },
   { emoji: '🌟', text: "What's the best value room right now?" },
+  { emoji: '🛎️', text: 'Are all deluxe rooms occupied?' },
+  { emoji: '📅', text: 'Which rooms will be free in 2 days?' },
 ];
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -258,99 +266,111 @@ function CalendarDateTimePicker({ value, onChange, label, error, minDate }) {
   );
 }
 
+
 /* ══════════════════════════════════════════════════════════════════════
-   EMBEDDED BOOKING WIDGET (updated to USD)
+   ROOM BOOKING POPUP - NO AI ASSISTANT
 ══════════════════════════════════════════════════════════════════════ */
-function EmbeddedBookingWidget({ hotelId, roomTypes, hotel }) {
-  const [formData, setFormData] = useState({ name: '', email: '', contact: '', room: '', days: '', checkin: '', checkout: '' });
+function RoomBookingPopup({ hotelId, hotel, room, bookings, onBookingSuccess, setAllRooms, onClose }) {
+  const getInitialRoomValue = () => {
+    if (!room) return '';
+    const type = room.room_type_display || room.type || 'Room';
+    return `${room.number} / ${type}`;
+  };
+
+  const getInitialRoomType = () => {
+    const type = (room?.internal_type || room?.internalType || room?.room_type_display || room?.type || '').toLowerCase();
+    if (type.includes('deluxe')) return 'deluxe';
+    if (type.includes('suite')) return 'suite';
+    return 'normal';
+  };
+
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    contact: '',
+    room: getInitialRoomValue(),
+    days: '',
+    checkin: '',
+    checkout: '',
+  });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [selectedRoomType, setSelectedRoomType] = useState(null);
-  const [prices, setPrices] = useState(null);
-  const [allRooms, setAllRooms] = useState([]);
-  const [bookings, setBookings] = useState([]);
-  const [dataLoading, setDataLoading] = useState(true);
-  const [showChatbot, setShowChatbot] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(true);
-  const [chatMessages, setChatMessages] = useState([{ type: 'bot', text: "👋 Hi! I'm your AI Booking Assistant.\n\nI can help with:\n• Room availability & pricing\n• Best room for your budget\n• Occupancy & check-out times\n\nTap a suggestion or ask me anything! 🏨" }]);
-  const [chatInput, setChatInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [chatPosition, setChatPosition] = useState({ x: 20, y: 80 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const messagesEndRef = useRef(null);
-  const chatbotRef = useRef(null);
+  const [selectedRoomType, setSelectedRoomType] = useState(getInitialRoomType());
+  const [overlapError, setOverlapError] = useState('');
+
+  const selectedRoomNumber = extractRoomNumber(formData.room);
 
   const getRoomStatusForRoom = useCallback((roomNumber) => {
     const now = new Date();
-    const matchingBooking = bookings.find(b => {
+    const activeBooking = bookings.find(b => {
       if (!b.room) return false;
       const extracted = extractRoomNumber(b.room);
       if (extracted !== roomNumber) return false;
       const checkIn = new Date(b.check_in);
-      const checkOut = new Date(b.check_out);
-      return now >= checkIn && now < checkOut;
+      const checkOut = b.check_out ? new Date(b.check_out) : null;
+      if (checkOut && now >= checkOut) return false;
+      return now >= checkIn;
     });
-    return matchingBooking ? 'occupied' : 'available';
+    if (activeBooking) return 'occupied';
+
+    const futureBooking = bookings.find(b => {
+      if (!b.room) return false;
+      const extracted = extractRoomNumber(b.room);
+      if (extracted !== roomNumber) return false;
+      const checkIn = new Date(b.check_in);
+      return checkIn > now;
+    });
+    return futureBooking ? 'booked' : 'available';
   }, [bookings]);
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      setDataLoading(true);
-      try {
-        const [roomsRes, bookingsRes] = await Promise.all([
-          guestApi.get(`/hotels/${hotelId}/guest-rooms/`),
-          guestApi.get(`/hotels/${hotelId}/guest-bookings/`),
-        ]);
-        const rooms = roomsRes.data.rooms || [];
-        const bks = bookingsRes.data.bookings || [];
-        setBookings(bks);
-        const formattedRooms = rooms.map(room => ({ number: room.room_number, type: room.room_type, price: room.price_per_night }));
-        setAllRooms(formattedRooms);
-        if (rooms.length > 0) {
-          setPrices({
-            normal_price: rooms.find(r => r.type === 'standard')?.price_per_night || 5000,
-            deluxe_price: rooms.find(r => r.type === 'deluxe')?.price_per_night || 8500,
-            suite_price: rooms.find(r => r.type === 'suite')?.price_per_night || 15000,
-          });
-        }
-      } catch (error) {
-        console.error('Booking widget error:', error);
-        if (roomTypes?.length) setAllRooms(roomTypes.map((r, i) => ({ number: 101 + i, type: r.room_type, price: r.price_per_night })));
-      } finally { setDataLoading(false); }
-    };
-    fetchAll();
-  }, [hotelId, roomTypes]);
+  const selectedRoomStatus = selectedRoomNumber ? getRoomStatusForRoom(selectedRoomNumber) : 'available';
 
-  const enrichedRooms = useMemo(() => allRooms.map(r => ({ ...r, roomStatus: getRoomStatusForRoom(r.number), isAvailable: getRoomStatusForRoom(r.number) === 'available' })), [allRooms, getRoomStatusForRoom]);
-  const availableRooms = useMemo(() => enrichedRooms.filter(r => r.isAvailable), [enrichedRooms]);
-  const selectedRoomStatus = useMemo(() => {
-    const num = extractRoomNumber(formData.room);
-    return num ? getRoomStatusForRoom(num) : 'available';
-  }, [formData.room, getRoomStatusForRoom]);
+  const handleRoomChange = (value) => {
+    setFormData(p => ({ ...p, room: value }));
+    const lower = value.toLowerCase();
+    if (lower.includes('deluxe')) setSelectedRoomType('deluxe');
+    else if (lower.includes('suite')) setSelectedRoomType('suite');
+    else setSelectedRoomType('normal');
+  };
+
+  const hasOverlappingBooking = useCallback(() => {
+    if (!formData.email || !formData.checkin || !formData.checkout) return false;
+    const newCheckIn = new Date(formData.checkin);
+    const newCheckOut = new Date(formData.checkout);
+    const guestBookings = bookings.filter(b => b.email?.toLowerCase() === formData.email.toLowerCase());
+    return guestBookings.some(b => {
+      const existingCheckIn = new Date(b.check_in);
+      const existingCheckOut = new Date(b.check_out);
+      return newCheckIn < existingCheckOut && newCheckOut > existingCheckIn;
+    });
+  }, [formData.email, formData.checkin, formData.checkout, bookings]);
+
+  const validateForm = () => {
+    const e = {};
+    setOverlapError('');
+    if (!formData.name.trim()) e.name = 'Name is required';
+    if (!formData.email.trim()) e.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(formData.email)) e.email = 'Invalid email address';
+    if (!formData.contact.trim()) e.contact = 'Contact is required';
+    if (!formData.room.trim()) e.room = 'Room is required';
+    if (!formData.checkin) e.checkin = 'Check-in date is required';
+    if (!formData.checkout) e.checkout = 'Check-out date is required';
+    if (formData.checkin && formData.checkout && new Date(formData.checkin) >= new Date(formData.checkout)) {
+      e.checkout = 'Check-out must be after check-in';
+    }
+    if (!e.email && !e.checkin && !e.checkout && hasOverlappingBooking()) {
+      setOverlapError('Cannot Do Another Booking for Same Date');
+      e.overlap = 'You already have a booking that overlaps with these dates.';
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   const priceInfo = useMemo(() => {
-    if (!formData.room) return null;
-    const roomTypesData = prices ? { normal: prices.normal_price, deluxe: prices.deluxe_price, suite: prices.suite_price } : null;
-    let unitPrice = 0;
-    const lower = formData.room.toLowerCase();
-    if (lower.includes('normal')) unitPrice = roomTypesData?.normal || 0;
-    else if (lower.includes('deluxe')) unitPrice = roomTypesData?.deluxe || 0;
-    else if (lower.includes('suite')) unitPrice = roomTypesData?.suite || 0;
-    else {
-      const num = extractRoomNumber(formData.room);
-      if (num) {
-        const found = enrichedRooms.find(r => r.number === num);
-        unitPrice = found?.price;
-        if (!unitPrice) {
-          if (num >= 101 && num <= 199) unitPrice = roomTypesData?.normal || 0;
-          else if (num >= 201 && num <= 299) unitPrice = roomTypesData?.deluxe || 0;
-          else if (num >= 301 && num <= 399) unitPrice = roomTypesData?.suite || 0;
-        }
-      }
-    }
+    const unitPrice = parseFloat(room?.price_per_night || room?.price || 0);
     if (!unitPrice) return null;
+
     let days = 0;
     if (formData.checkin && formData.checkout) {
       const ms = new Date(formData.checkout) - new Date(formData.checkin);
@@ -358,106 +378,22 @@ function EmbeddedBookingWidget({ hotelId, roomTypes, hotel }) {
     }
     if (!days && formData.days) days = Number(formData.days);
     if (!days || days < 1) return null;
+
     const rawTotal = days * unitPrice;
     const discount = days >= 3 ? 0.1 : 0;
     const total = rawTotal * (1 - discount);
     return {
-      unit: unitPrice, days, total, rawTotal, discount: discount > 0,
+      unit: unitPrice,
+      days,
+      rawTotal,
+      total,
+      discount: discount > 0,
       formatted: discount
         ? `${formatUSD(unitPrice)} × ${days} night${days > 1 ? 's' : ''} − 10% = ${formatUSD(total)}`
         : `${formatUSD(unitPrice)} × ${days} night${days > 1 ? 's' : ''} = ${formatUSD(total)}`,
     };
-  }, [prices, formData.room, formData.checkin, formData.checkout, formData.days, enrichedRooms]);
+  }, [room, formData.checkin, formData.checkout, formData.days]);
 
-  const handleRoomChange = (value) => {
-    setFormData(p => ({ ...p, room: value }));
-    const lower = value.toLowerCase();
-    if (lower.includes('normal')) setSelectedRoomType('normal');
-    else if (lower.includes('deluxe')) setSelectedRoomType('deluxe');
-    else if (lower.includes('suite')) setSelectedRoomType('suite');
-    else {
-      const num = extractRoomNumber(value);
-      if (num >= 101 && num <= 199) setSelectedRoomType('normal');
-      else if (num >= 201 && num <= 299) setSelectedRoomType('deluxe');
-      else if (num >= 301 && num <= 399) setSelectedRoomType('suite');
-      else setSelectedRoomType(null);
-    }
-  };
-
-  const validateForm = () => {
-    const e = {};
-    if (!formData.name.trim()) e.name = 'Name is required';
-    if (!formData.email.trim()) e.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) e.email = 'Invalid email address';
-    if (!formData.contact.trim()) e.contact = 'Contact is required';
-    if (!formData.room.trim()) e.room = 'Room is required';
-    if (formData.room.trim() && selectedRoomStatus !== 'available') e.room = `Room ${extractRoomNumber(formData.room)} is ${selectedRoomStatus} — choose another.`;
-    if (!formData.checkin) e.checkin = 'Check-in date is required';
-    if (!formData.checkout) e.checkout = 'Check-out date is required';
-    if (formData.checkin && formData.checkout && new Date(formData.checkin) >= new Date(formData.checkout)) e.checkout = 'Check-out must be after check-in';
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  const handleSubmit = async (ev) => {
-    ev.preventDefault();
-    if (!validateForm()) return;
-    let days = Number(formData.days);
-    if (formData.checkin && formData.checkout) {
-      const ms = new Date(formData.checkout) - new Date(formData.checkin);
-      if (ms > 0) days = Math.max(1, Math.round(ms / 86400000));
-    }
-    setSubmitting(true);
-    try {
-      await guestApi.post('/manage-bookings/', { ...formData, days, checkin: new Date(formData.checkin).toISOString(), checkout: new Date(formData.checkout).toISOString(), status: 'Booked', hotel: hotelId });
-      setShowSuccess(true);
-      const refreshed = await guestApi.get(`/hotels/${hotelId}/guest-bookings/`);
-      setBookings(refreshed.data.bookings || []);
-      setTimeout(() => { setShowSuccess(false); setFormData({ name: '', email: '', contact: '', room: '', days: '', checkin: '', checkout: '' }); setSelectedRoomType(null); }, 3000);
-    } catch { alert('Failed to create booking. Please try again.'); } finally { setSubmitting(false); }
-  };
-
-  const handleMouseDown = (e) => {
-    if (!e.target.closest('.chatbot-drag-handle')) return;
-    e.preventDefault();
-    setIsDragging(true);
-    const rect = chatbotRef.current.getBoundingClientRect();
-    setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-  };
-
-  useEffect(() => {
-    const onMove = (e) => {
-      if (!isDragging) return;
-      setChatPosition({ x: Math.min(Math.max(e.clientX - dragOffset.x, 10), window.innerWidth - 440), y: Math.min(Math.max(e.clientY - dragOffset.y, 10), window.innerHeight - 680) });
-    };
-    const onUp = () => setIsDragging(false);
-    if (isDragging) { window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp); }
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [isDragging, dragOffset]);
-
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
-
-  const handleSendMessage = async (overrideText = null) => {
-    const userMsg = (overrideText ?? chatInput).trim();
-    if (!userMsg || isTyping) return;
-    const historyToSend = chatMessages.slice(-10);
-    setChatMessages(prev => [...prev, { type: 'user', text: userMsg }]);
-    setChatInput('');
-    setIsTyping(true);
-    setShowSuggestions(false);
-    try {
-      const res = await fetch('/api/hotel-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg, history: historyToSend, context: { rooms: enrichedRooms, availability: { totalAvailable: availableRooms.length, totalRooms: enrichedRooms.length }, bookings, prices: prices ?? {}, hotel: { name: hotel?.name, location: hotel?.location } } }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setChatMessages(prev => [...prev, { type: 'bot', text: data.reply ?? 'Sorry, no response received.' }]);
-    } catch (err) { setChatMessages(prev => [...prev, { type: 'bot', text: `⚠️ ${err.message || 'Connection error. Please try again.'}` }]); } finally { setIsTyping(false); }
-  };
-
-  const inputCls = (field) => `w-full pl-10 pr-3 py-2.5 bg-white/5 backdrop-blur-sm border rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 transition-all duration-200 ${errors[field] ? 'border-red-500' : 'border-white/20'}`;
   const derivedDays = useMemo(() => {
     if (formData.checkin && formData.checkout) {
       const ms = new Date(formData.checkout) - new Date(formData.checkin);
@@ -466,53 +402,207 @@ function EmbeddedBookingWidget({ hotelId, roomTypes, hotel }) {
     return formData.days || '';
   }, [formData.checkin, formData.checkout, formData.days]);
 
+  const handleSubmit = async (ev) => {
+    ev.preventDefault();
+    if (!validateForm()) return;
+
+    let days = Number(formData.days);
+    if (formData.checkin && formData.checkout) {
+      const ms = new Date(formData.checkout) - new Date(formData.checkin);
+      if (ms > 0) days = Math.max(1, Math.round(ms / 86400000));
+    }
+
+    setSubmitting(true);
+    try {
+      await guestApi.post('/manage-bookings/', {
+        ...formData,
+        days,
+        checkin: new Date(formData.checkin).toISOString(),
+        checkout: new Date(formData.checkout).toISOString(),
+        status: 'Booked',
+        hotel: hotelId,
+      });
+
+      setShowSuccess(true);
+
+      const refreshed = await guestApi.get(`/hotels/${hotelId}/guest-bookings/`);
+      const newBookings = refreshed.data.bookings || [];
+      if (onBookingSuccess) onBookingSuccess(newBookings);
+
+      try {
+        const refreshedRooms = await guestApi.get(`/hotels/${hotelId}/guest-rooms/`);
+        const rawRooms = refreshedRooms.data.rooms || [];
+        const updatedRooms = rawRooms.map(r => {
+          const lowerType = r.room_type?.toLowerCase();
+          let internalType = 'normal';
+          if (lowerType === 'standard' || lowerType === 'normal') internalType = 'normal';
+          else if (lowerType === 'deluxe') internalType = 'deluxe';
+          else if (lowerType === 'suite') internalType = 'suite';
+          return {
+            number: r.room_number,
+            type: mapRoomTypeDisplay(r.room_type),
+            internalType,
+            price: r.price_per_night,
+          };
+        });
+        if (setAllRooms) setAllRooms(updatedRooms);
+      } catch {}
+
+      setTimeout(() => {
+        setShowSuccess(false);
+        onClose();
+      }, 1200);
+    } catch (err) {
+      alert('Failed to create booking. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const inputCls = (field) => `w-full pl-10 pr-3 py-2.5 bg-white/5 backdrop-blur-sm border rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 transition-all duration-200 ${errors[field] ? 'border-red-500' : 'border-white/20'}`;
+
   return (
-    <>
-      <div className="rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl p-6 animate-fadeInUp">
-        <div className="flex items-center justify-between mb-5">
-          <div><h2 className="text-xl font-bold text-white mb-1">Book Your Stay</h2><p className="text-gray-400 text-xs">Enter guest information and room preferences</p></div>
-          <button onClick={() => setShowChatbot(v => !v)} className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl transition-all duration-200 flex items-center gap-2 shadow-lg text-sm font-semibold"><FaRobot className="text-base" /> AI Assistant</button>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fadeInUp" onClick={onClose}>
+      <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900 border border-purple-500/40 shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+          <FaTimes />
+        </button>
+
+        <div className="mb-5 pr-10">
+          <h2 className="text-2xl font-bold text-white mb-1">Book Your Stay</h2>
+          <p className="text-gray-400 text-sm">{hotel?.name || 'Selected Hotel'} · Room {room?.number}</p>
         </div>
-        {showSuccess && <div className="mb-4 p-3 bg-green-500/20 border border-green-500/50 rounded-xl flex items-center gap-3 animate-fadeInUp"><FaCheckCircle className="text-green-400 text-lg" /><div><p className="text-green-400 font-semibold text-sm">Booking Created Successfully!</p><p className="text-green-300 text-xs">Booking has been added to the system.</p></div></div>}
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-3"><h3 className="text-sm font-semibold text-white flex items-center gap-2"><div className="w-1 h-5 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />Guest Information</h3><div className="grid grid-cols-1 gap-3">
-            <div><label className="block text-xs font-medium text-gray-300 mb-1">Full Name *</label><div className="relative"><FaUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" /><input type="text" value={formData.name} placeholder="John Doe" onChange={e => setFormData(p => ({ ...p, name: e.target.value }))} className={inputCls('name')} /></div>{errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}</div>
-            <div><label className="block text-xs font-medium text-gray-300 mb-1">Email *</label><div className="relative"><FaEnvelope className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" /><input type="email" value={formData.email} placeholder="john@example.com" onChange={e => setFormData(p => ({ ...p, email: e.target.value }))} className={inputCls('email')} /></div>{errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}</div>
-            <div><label className="block text-xs font-medium text-gray-300 mb-1">Contact Number *</label><div className="relative"><FaPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" /><input type="tel" value={formData.contact} placeholder="+977 98XXXXXXXX" onChange={e => setFormData(p => ({ ...p, contact: e.target.value }))} className={inputCls('contact')} /></div>{errors.contact && <p className="text-red-400 text-xs mt-1">{errors.contact}</p>}</div>
-            <div><label className="block text-xs font-medium text-gray-300 mb-1">Room *</label><div className="relative"><FaDoorOpen className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" /><input type="text" value={formData.room} placeholder="101 / Normal / Deluxe / Suite" onChange={e => handleRoomChange(e.target.value)} className={inputCls('room')} /></div>{errors.room && <p className="text-red-400 text-xs mt-1">{errors.room}</p>}{selectedRoomType && selectedRoomStatus === 'available' && <p className="text-purple-400 text-xs mt-1 animate-pulse">💡 {roomAmenities[selectedRoomType]?.name} selected</p>}</div>
-          </div></div>
-          <div className="space-y-3 pt-3 border-t border-white/10"><h3 className="text-sm font-semibold text-white flex items-center gap-2"><div className="w-1 h-5 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />Stay Details</h3>
-            <div><label className="block text-xs font-medium text-gray-300 mb-1">Number of Days <span className="text-gray-500 ml-1">(auto-calc from dates)</span></label><div className="relative"><FaCalendarAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" /><input type="number" min="1" value={derivedDays} placeholder="2" onChange={e => setFormData(p => ({ ...p, days: e.target.value }))} className={inputCls('days')} /></div>{errors.days && <p className="text-red-400 text-xs mt-1">{errors.days}</p>}</div>
-            <div className="relative"><CalendarDateTimePicker label="Check-in Date & Time *" value={formData.checkin} onChange={e => setFormData(p => ({ ...p, checkin: e.target.value }))} error={errors.checkin} /></div>
-            <div className="relative"><CalendarDateTimePicker label="Check-out Date & Time *" value={formData.checkout} onChange={e => setFormData(p => ({ ...p, checkout: e.target.value }))} error={errors.checkout} minDate={formData.checkin ? formData.checkin.split('T')[0] : undefined} /></div>
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <div className="w-1 h-5 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />
+              Guest Information
+            </h3>
+
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1">Full Name *</label>
+                <div className="relative">
+                  <FaUsers className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+                  <input type="text" value={formData.name} placeholder="John Doe" onChange={e => setFormData(p => ({ ...p, name: e.target.value }))} className={inputCls('name')} />
+                </div>
+                {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1">Email *</label>
+                <div className="relative">
+                  <FaEnvelope className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+                  <input type="email" value={formData.email} placeholder="john@example.com" onChange={e => setFormData(p => ({ ...p, email: e.target.value }))} className={inputCls('email')} />
+                </div>
+                {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1">Contact Number *</label>
+                <div className="relative">
+                  <FaPhoneAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+                  <input type="tel" value={formData.contact} placeholder="+977 98XXXXXXXX" onChange={e => setFormData(p => ({ ...p, contact: e.target.value }))} className={inputCls('contact')} />
+                </div>
+                {errors.contact && <p className="text-red-400 text-xs mt-1">{errors.contact}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1">Room *</label>
+                <div className="relative">
+                  <FaDoorOpen className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+                  <input type="text" value={formData.room} placeholder="101 / Normal / Deluxe / Suite" onChange={e => handleRoomChange(e.target.value)} className={inputCls('room')} />
+                </div>
+                {errors.room && <p className="text-red-400 text-xs mt-1">{errors.room}</p>}
+                {selectedRoomStatus !== 'available' && (
+                  <p className="text-amber-400 text-xs mt-1">This room is currently {selectedRoomStatus}. Please check date availability before booking.</p>
+                )}
+              </div>
+            </div>
           </div>
-          {priceInfo && <div className="p-4 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-xl border border-purple-500/50 animate-fadeInUp"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0"><FaDollarSign className="text-white text-sm" /></div><div><p className="text-white font-semibold text-sm">Total Price</p><p className="text-xs text-gray-300">{priceInfo.formatted}</p>{priceInfo.discount && <p className="text-xs text-green-400 font-semibold">🎉 10% discount for 3+ nights!</p>}</div></div><div className="text-right">{priceInfo.discount && <p className="text-xs text-gray-400 line-through">{formatUSD(priceInfo.rawTotal)}</p>}<p className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">{formatUSD(priceInfo.total)}</p><p className="text-xs text-gray-400">{priceInfo.days} night{priceInfo.days > 1 ? 's' : ''}</p></div></div></div>}
-          {selectedRoomType && roomAmenities[selectedRoomType] && selectedRoomStatus === 'available' && <div className="rounded-xl bg-white/5 border border-white/10 p-3 animate-fadeInUp"><div className={`h-0.5 w-12 rounded-full bg-gradient-to-r ${roomAmenities[selectedRoomType].color} mb-2`} /><p className="text-xs font-semibold text-white mb-2">{roomAmenities[selectedRoomType].name} — {roomAmenities[selectedRoomType].priceRange}/night</p><div className="grid grid-cols-2 gap-1">{roomAmenities[selectedRoomType].amenities.slice(0,4).map((a,i) => <div key={i} className="flex items-center gap-1.5 text-xs text-gray-300"><a.icon className="text-purple-400 text-[10px] flex-shrink-0" /><span>{a.name}</span></div>)}</div></div>}
-          <button type="submit" disabled={submitting || dataLoading || selectedRoomStatus !== 'available'} className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-semibold hover:opacity-90 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">{submitting ? <><FaSpinner className="animate-spin text-sm" /> Creating Booking...</> : selectedRoomStatus !== 'available' && formData.room ? <><FaLock className="text-sm" /> Room Unavailable — Choose Another</> : <><FaPlus className="text-sm" /> Create Booking</>}</button>
+
+          <div className="space-y-3 pt-3 border-t border-white/10">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <div className="w-1 h-5 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />
+              Stay Details
+            </h3>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1">Number of Days <span className="text-gray-500 ml-1">(auto-calc from dates)</span></label>
+              <div className="relative">
+                <FaCalendarAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+                <input type="number" min="1" value={derivedDays} placeholder="2" onChange={e => setFormData(p => ({ ...p, days: e.target.value }))} className={inputCls('days')} />
+              </div>
+            </div>
+
+            <CalendarDateTimePicker label="Check-in Date & Time *" value={formData.checkin} onChange={e => setFormData(p => ({ ...p, checkin: e.target.value }))} error={errors.checkin} />
+            <CalendarDateTimePicker label="Check-out Date & Time *" value={formData.checkout} onChange={e => setFormData(p => ({ ...p, checkout: e.target.value }))} error={errors.checkout} minDate={formData.checkin ? formData.checkin.split('T')[0] : undefined} />
+          </div>
+
+          {priceInfo && (
+            <div className="p-4 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-xl border border-purple-500/50 animate-fadeInUp">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-white font-semibold text-sm">Total Price</p>
+                  <p className="text-xs text-gray-300">{priceInfo.formatted}</p>
+                  {priceInfo.discount && <p className="text-xs text-green-400 font-semibold">🎉 10% discount for 3+ nights!</p>}
+                </div>
+                <div className="text-right">
+                  {priceInfo.discount && <p className="text-xs text-gray-400 line-through">{formatUSD(priceInfo.rawTotal)}</p>}
+                  <p className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">{formatUSD(priceInfo.total)}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {selectedRoomType && roomAmenities[selectedRoomType] && (
+            <div className="rounded-xl bg-white/5 border border-white/10 p-3 animate-fadeInUp">
+              <div className={`h-0.5 w-12 rounded-full bg-gradient-to-r ${roomAmenities[selectedRoomType].color} mb-2`} />
+              <p className="text-xs font-semibold text-white mb-2">{roomAmenities[selectedRoomType].name} — {roomAmenities[selectedRoomType].priceRange}/night</p>
+              <div className="grid grid-cols-2 gap-1">
+                {roomAmenities[selectedRoomType].amenities.slice(0, 4).map((a, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-xs text-gray-300">
+                    <a.icon className="text-purple-400 text-[10px] flex-shrink-0" />
+                    <span>{a.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {overlapError && (
+            <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-xl flex items-center gap-3 animate-fadeInUp">
+              <FaExclamationCircle className="text-red-400 text-lg" />
+              <div>
+                <p className="text-red-400 font-semibold text-sm">{overlapError}</p>
+                <p className="text-red-300 text-xs">You already have a booking for this period. Please choose different dates.</p>
+              </div>
+            </div>
+          )}
+
+          <button type="submit" disabled={submitting} className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-semibold hover:opacity-90 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">
+            {submitting ? <><FaSpinner className="animate-spin text-sm" /> Creating Booking...</> : <><FaPlus className="text-sm" /> Create Booking</>}
+          </button>
           <p className="text-xs text-gray-500 text-center">You won't be charged yet. Free cancellation available.</p>
         </form>
+
+        {showSuccess && (
+          <div className="mt-4 p-3 bg-green-500/20 border border-green-500/50 rounded-xl flex items-center gap-3 animate-fadeInUp">
+            <FaCheckCircle className="text-green-400 text-lg" />
+            <div>
+              <p className="text-green-400 font-semibold text-sm">Booking Created Successfully!</p>
+              <p className="text-green-300 text-xs">Your booking has been added to the system.</p>
+            </div>
+          </div>
+        )}
       </div>
-      {showChatbot && (<div ref={chatbotRef} style={{ position: 'fixed', left: `${chatPosition.x}px`, top: `${chatPosition.y}px`, width: '420px', maxHeight: '680px', zIndex: 99999, userSelect: 'none', cursor: isDragging ? 'grabbing' : 'default' }}><div className="bg-gradient-to-b from-gray-900/98 to-gray-800/98 backdrop-blur-xl rounded-2xl shadow-2xl border border-purple-500/30 flex flex-col overflow-hidden" style={{ maxHeight: '680px' }}>
-        <div className="chatbot-drag-handle p-4 border-b border-white/10 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-t-2xl select-none flex-shrink-0" onMouseDown={handleMouseDown} style={{ cursor: isDragging ? 'grabbing' : 'grab' }}>
-          <div className="flex items-center justify-between"><div className="flex items-center gap-2 pointer-events-none"><div className="w-9 h-9 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center"><FaRobot className="text-white text-base" /></div><div><h3 className="text-white font-bold text-sm">AI Booking Assistant</h3><p className="text-xs text-green-400 flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-400 rounded-full inline-block animate-pulse" />Powered by Claude · Live hotel data</p></div></div><div className="flex items-center gap-2"><button onMouseDown={e => e.stopPropagation()} onClick={() => setShowChatbot(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition pointer-events-auto"><FaTimes className="text-gray-400" /></button></div></div><div className="flex justify-center mt-1 pointer-events-none"><FaGripVertical className="text-gray-600 text-xs" /></div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0" style={{ maxHeight: '340px' }}>
-          {chatMessages.map((msg, idx) => (<div key={idx} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>{msg.type === 'bot' && <div className="w-7 h-7 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center mr-2 mt-1 flex-shrink-0"><FaRobot className="text-white text-xs" /></div>}<div className={`max-w-[82%] p-3 rounded-xl text-sm whitespace-pre-wrap leading-relaxed ${msg.type === 'user' ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-br-none' : 'bg-white/10 backdrop-blur-sm text-gray-200 rounded-bl-none border border-white/10'}`}>{msg.text}</div></div>))}
-          {isTyping && (<div className="flex justify-start items-center gap-2"><div className="w-7 h-7 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0"><FaRobot className="text-white text-xs" /></div><div className="bg-white/10 p-3 rounded-xl rounded-bl-none border border-white/10 flex gap-1 items-center">{[...Array(3)].map((_,i) => <div key={i} className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: `${i*150}ms` }} />)}<span className="text-xs text-gray-500 ml-2">Analyzing hotel data...</span></div></div>)}
-          <div ref={messagesEndRef} />
-        </div>
-        <div className="flex-shrink-0 border-t border-white/10 bg-gray-900/40">
-          <button onClick={() => setShowSuggestions(v => !v)} className="w-full flex items-center justify-between px-4 py-2 text-xs text-gray-400 hover:text-gray-300 hover:bg-white/5 transition"><div className="flex items-center gap-1"><FaLightbulb className="text-yellow-500 text-xs" /> Suggested questions</div>{showSuggestions ? <FaChevronDown className="text-xs" /> : <FaChevronUp className="text-xs" />}</button>
-          {showSuggestions && (<div className="px-3 pb-2 flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">{SUGGESTED_QUESTIONS.map((q,i) => <button key={i} onClick={() => handleSendMessage(q.text)} disabled={isTyping} className="flex items-center gap-1 px-2.5 py-1 bg-white/5 hover:bg-purple-500/20 border border-white/10 hover:border-purple-500/40 rounded-lg text-xs text-gray-300 hover:text-white transition-all disabled:opacity-40"><span>{q.emoji}</span><span className="truncate max-w-[150px]">{q.text}</span></button>)}</div>)}
-        </div>
-        <div className="flex-shrink-0 p-3 border-t border-white/10 bg-gray-900/60"><div className="flex gap-2"><input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} placeholder="Ask about rooms, prices, availability..." disabled={isTyping} className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 text-sm disabled:opacity-50" /><button onClick={() => handleSendMessage()} disabled={isTyping || !chatInput.trim()} className="px-3 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"><FaPaperPlane className="text-sm" /></button></div><p className="text-xs text-gray-600 mt-1.5 text-center">Powered by Claude AI · Live database data</p></div>
-      </div></div>)}
-    </>
+    </div>
   );
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   HOTEL MAP CARD (unchanged – no prices)
+   HOTEL MAP CARD (unchanged)
 ══════════════════════════════════════════════════════════════════════ */
 const HotelMapCard = ({ hotel }) => {
   const [mapError, setMapError] = useState(false);
@@ -550,7 +640,7 @@ const HotelMapCard = ({ hotel }) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   WEEKEND DEALS CAROUSEL (unchanged – uses USD in deals)
+   WEEKEND DEALS CAROUSEL (unchanged)
 ══════════════════════════════════════════════════════════════════════ */
 const WeekendDealsCarousel = ({ onBook, favHotels, toggleFav, onViewDeal }) => {
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -587,7 +677,7 @@ const WeekendDealsCarousel = ({ onBook, favHotels, toggleFav, onViewDeal }) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   SUGGESTED HOTELS CAROUSEL – uses guest-rooms endpoint (USD in prices)
+   SUGGESTED HOTELS CAROUSEL (unchanged)
 ══════════════════════════════════════════════════════════════════════ */
 const SuggestedHotelsCarousel = ({ currentHotelId, onBookNow }) => {
   const [hotels, setHotels] = useState([]);
@@ -643,12 +733,11 @@ const SuggestedHotelsCarousel = ({ currentHotelId, onBookNow }) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   GUEST ROOM STATUS PANEL – updated to USD, no NPR
+   GUEST ROOM STATUS PANEL (key fixed)
 ══════════════════════════════════════════════════════════════════════ */
-const GuestRoomStatusPanel = ({ hotelId }) => {
+const GuestRoomStatusPanel = ({ hotelId, hotel, bookings, allRooms, onBookingSuccess, setAllRooms }) => {
   const [roomFilter, setRoomFilter] = useState('all');
   const [roomsData, setRoomsData] = useState([]);
-  const [bookings, setBookings] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [showCheckInPicker, setShowCheckInPicker] = useState(false);
   const [showCheckOutPicker, setShowCheckOutPicker] = useState(false);
@@ -663,13 +752,11 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
   const [checkOutYear, setCheckOutYear] = useState(new Date().getFullYear());
   const pickerRefIn = useRef(null);
   const pickerRefOut = useRef(null);
-
-  // Modal state
   const [selectedRoom, setSelectedRoom] = useState(null);
+  const [bookingRoom, setBookingRoom] = useState(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
 
-  // Helper: get images for a room based on its type and number
   const getImagesForRoom = (type, roomNumber) => {
     const images = {
       normal: [
@@ -697,7 +784,7 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
   const getFacilitiesForType = (type) => {
     const base = ["WiFi", "Air Conditioning", "Flat-screen TV", "Mini Bar"];
     if (type === "deluxe") return [...base, "Bathtub", "City View", "Work Desk"];
-    if (type === "suite")  return [...base, "Jacuzzi", "Sea View", "Kitchenette", "Private Balcony"];
+    if (type === "suite") return [...base, "Jacuzzi", "Sea View", "Kitchenette", "Private Balcony"];
     return base;
   };
 
@@ -708,49 +795,76 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
   };
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!hotelId) return;
-      try {
+    if (allRooms && allRooms.length > 0) {
+      const enriched = allRooms.map(r => ({
+        ...r,
+        room_type_display: r.type,
+        internal_type: r.internalType,
+        price_per_night: r.price,
+        images: getImagesForRoom(r.internalType, r.number),
+        facilities: getFacilitiesForType(r.internalType),
+        description: getDescriptionForType(r.internalType),
+      }));
+      setRoomsData(enriched);
+      setDataLoading(false);
+    } else {
+      const fetchRooms = async () => {
+        if (!hotelId) return;
         setDataLoading(true);
-        const [roomsRes, bookingsRes] = await Promise.all([
-          guestApi.get(`/hotels/${hotelId}/guest-rooms/`),
-          guestApi.get(`/hotels/${hotelId}/guest-bookings/`),
-        ]);
-        const rooms = (roomsRes.data.rooms || []).map(r => ({
-          ...r,
-          images: getImagesForRoom(r.room_type?.toLowerCase() === 'standard' ? 'normal' : (r.room_type?.toLowerCase() === 'deluxe' ? 'deluxe' : 'suite'), r.room_number),
-          facilities: getFacilitiesForType(r.room_type?.toLowerCase() === 'standard' ? 'normal' : (r.room_type?.toLowerCase() === 'deluxe' ? 'deluxe' : 'suite')),
-          description: getDescriptionForType(r.room_type?.toLowerCase() === 'standard' ? 'normal' : (r.room_type?.toLowerCase() === 'deluxe' ? 'deluxe' : 'suite')),
-        }));
-        setRoomsData(rooms);
-        setBookings(bookingsRes.data.bookings || []);
-      } catch (error) {
-        console.error('Guest room panel error:', error);
-        const demoRooms = [];
-        for (let i = 1; i <= 20; i++) {
-          const type = i <= 10 ? 'normal' : (i <= 16 ? 'deluxe' : 'suite');
-          demoRooms.push({
-            id: 100 + i,
-            room_number: 100 + i,
-            room_type: type === 'normal' ? 'Normal' : (type === 'deluxe' ? 'Deluxe' : 'Suite'),
-            type: type,
-            price_per_night: type === 'normal' ? 5000 : (type === 'deluxe' ? 8500 : 15000),
-            capacity: type === 'normal' ? 2 : (type === 'deluxe' ? 3 : 4),
-            bed_type: type === 'normal' ? 'Queen Bed' : (type === 'deluxe' ? 'King Bed' : 'Super King Bed'),
-            amenities: type === 'normal' ? ['WiFi','AC','TV'] : (type === 'deluxe' ? ['WiFi','AC','TV','Mini Bar'] : ['WiFi','AC','TV','Jacuzzi']),
-            images: getImagesForRoom(type, 100 + i),
-            facilities: getFacilitiesForType(type),
-            description: getDescriptionForType(type),
+        try {
+          const roomsRes = await guestApi.get(`/hotels/${hotelId}/guest-rooms/`);
+          const rawRooms = roomsRes.data.rooms || [];
+          const rooms = rawRooms.map(r => {
+            const lowerType = r.room_type?.toLowerCase();
+            let internalType = 'normal';
+            if (lowerType === 'standard' || lowerType === 'normal') internalType = 'normal';
+            else if (lowerType === 'deluxe') internalType = 'deluxe';
+            else if (lowerType === 'suite') internalType = 'suite';
+            else internalType = 'normal';
+            return {
+              id: r.room_number,
+              number: r.room_number,
+              type: mapRoomTypeDisplay(r.room_type),
+              internalType,
+              price: r.price_per_night,
+              images: getImagesForRoom(internalType, r.room_number),
+              facilities: getFacilitiesForType(internalType),
+              description: getDescriptionForType(internalType),
+              room_type_display: mapRoomTypeDisplay(r.room_type),
+              internal_type: internalType,
+              price_per_night: r.price_per_night,
+            };
           });
-        }
-        setRoomsData(demoRooms);
-        setBookings([]);
-      } finally { setDataLoading(false); }
-    };
-    fetchData();
-  }, [hotelId]);
+          setRoomsData(rooms);
+        } catch (error) {
+          console.error('Guest room panel error:', error);
+          const demoRooms = [];
+          for (let i = 1; i <= 20; i++) {
+            const internalType = i <= 10 ? 'normal' : (i <= 16 ? 'deluxe' : 'suite');
+            const displayType = internalType === 'normal' ? 'Normal' : (internalType === 'deluxe' ? 'Deluxe' : 'Suite');
+            demoRooms.push({
+              id: 100 + i,
+              number: 100 + i,
+              type: displayType,
+              internalType,
+              price: internalType === 'normal' ? 5000 : (internalType === 'deluxe' ? 8500 : 15000),
+              images: getImagesForRoom(internalType, 100 + i),
+              facilities: getFacilitiesForType(internalType),
+              description: getDescriptionForType(internalType),
+              room_type_display: displayType,
+              internal_type: internalType,
+              price_per_night: internalType === 'normal' ? 5000 : (internalType === 'deluxe' ? 8500 : 15000),
+              capacity: internalType === 'normal' ? 2 : (internalType === 'deluxe' ? 3 : 4),
+              bed_type: internalType === 'normal' ? 'Queen Bed' : (internalType === 'deluxe' ? 'King Bed' : 'Super King Bed'),
+            });
+          }
+          setRoomsData(demoRooms);
+        } finally { setDataLoading(false); }
+      };
+      fetchRooms();
+    }
+  }, [hotelId, allRooms]);
 
-  // Auto-slide for modal carousel
   useEffect(() => {
     if (!selectedRoom || !isAutoPlaying) return;
     const interval = setInterval(() => {
@@ -809,21 +923,24 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
 
   let filtered = roomsData;
   if (roomFilter !== 'all') {
-    filtered = roomsData.filter(r => r.type?.toLowerCase() === roomFilter.toLowerCase() || r.room_type?.toLowerCase() === roomFilter.toLowerCase());
+    filtered = roomsData.filter(r =>
+      r.room_type_display?.toLowerCase() === roomFilter.toLowerCase() ||
+      r.internal_type === roomFilter
+    );
   }
 
   let totalRooms = filtered.length;
   let availableCount = 0, occupiedCount = 0, bookedCount = 0;
   if (searched && checkIn && checkOut) {
     filtered.forEach(room => {
-      const { status } = getRoomStatusForDates(room.room_number, checkIn, checkOut);
+      const { status } = getRoomStatusForDates(room.number, checkIn, checkOut);
       if (status === 'available') availableCount++;
       else if (status === 'occupied') occupiedCount++;
       else bookedCount++;
     });
   } else {
     filtered.forEach(room => {
-      const status = getCurrentRoomStatus(room.room_number);
+      const status = getCurrentRoomStatus(room.number);
       if (status === 'available') availableCount++;
       else if (status === 'occupied') occupiedCount++;
       else bookedCount++;
@@ -840,9 +957,17 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
   };
 
   const formatDate = (dateString) => dateString ? new Date(dateString).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }) : 'Select date';
-  const handleCheckInSelect = (year, month, day) => { const formatted = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`; setCheckIn(formatted); setShowCheckInPicker(false); if (checkOut && new Date(formatted) >= new Date(checkOut)) setCheckOut(''); };
-  const handleCheckOutSelect = (year, month, day) => { const formatted = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`; setCheckOut(formatted); setShowCheckOutPicker(false); };
-  const handleSearch = async () => { if (!checkIn || !checkOut) { alert('Please select both check-in and check-out dates'); return; } setLoading(true); setSearched(true); try { const bookingsRes = await guestApi.get(`/hotels/${hotelId}/guest-bookings/`); setBookings(bookingsRes.data.bookings || []); } catch (error){ console.error(error); } finally { setLoading(false); } };
+  const handleCheckInSelect = (year, month, day) => { const formatted = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`; setCheckIn(formatted); setSearched(false); setShowCheckInPicker(false); if (checkOut && new Date(formatted) >= new Date(checkOut)) setCheckOut(''); };
+  const handleCheckOutSelect = (year, month, day) => { const formatted = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`; setCheckOut(formatted); setSearched(false); setShowCheckOutPicker(false); };
+  const handleSearch = async () => {
+    if (!checkIn || !checkOut || !guests) {
+      alert('Please select check-in date, check-out date, and number of guests');
+      return;
+    }
+    setLoading(true);
+    setSearched(true);
+    setLoading(false);
+  };
 
   const CalendarPicker = ({ type, selectedDate, onSelect, currentMonth, currentYear, setMonth, setYear, show, setShow }) => {
     const today = new Date(); today.setHours(0,0,0,0);
@@ -905,7 +1030,7 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
             </div>
             <div className="w-[130px]">
               <label className="block text-gray-400 text-sm mb-1"><FaUsers className="inline text-purple-400 mr-1" /> Guests</label>
-              <input type="number" min="1" max="10" value={guests} onChange={e => setGuests(parseInt(e.target.value) || 1)} className="w-full bg-black/50 border border-white/20 rounded-lg px-4 py-2.5 text-white" />
+              <input type="number" min="1" max="10" value={guests} onChange={e => { setGuests(parseInt(e.target.value) || 1); setSearched(false); }} className="w-full bg-black/50 border border-white/20 rounded-lg px-4 py-2.5 text-white" />
             </div>
             <button onClick={handleSearch} disabled={loading} className="px-6 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white font-medium hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50">
               {loading ? <FaSpinner className="animate-spin" /> : <FaSearch />} Check Availability
@@ -913,6 +1038,16 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
           </div>
         </div>
 
+        {!searched ? (
+          <div className="rounded-2xl border border-dashed border-purple-500/40 bg-purple-500/10 p-10 text-center animate-fadeInUp">
+            <FaSearch className="text-4xl text-purple-400 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-white mb-2">Search room availability</h3>
+            <p className="text-gray-400 text-sm max-w-xl mx-auto">
+              Please select check-in date, check-out date, and number of guests, then click Check Availability to view all rooms with available, booked, and occupied status.
+            </p>
+          </div>
+        ) : (
+          <>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {[
             { label: 'Total Rooms', value: totalRooms, icon: FaBed, color: 'from-blue-500/20 to-blue-600/20', textCls: 'text-blue-300', iconCls: 'text-blue-400' },
@@ -936,10 +1071,10 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
           <FaFilter className="text-purple-400" />
           <span className="text-sm text-gray-300">Filter by room type:</span>
           <div className="flex gap-3 flex-wrap">
-            {['all', 'normal', 'deluxe', 'suite'].map(type => (
+            {['all', 'Normal', 'Deluxe', 'Suite'].map(type => (
               <button key={type} onClick={() => setRoomFilter(type === 'all' ? 'all' : type)}
                 className={`px-4 py-2 rounded-lg transition-all ${roomFilter === (type === 'all' ? 'all' : type) ? 'bg-purple-500 text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`}>
-                {type === 'all' ? 'All Rooms' : type.charAt(0).toUpperCase() + type.slice(1)}
+                {type === 'all' ? 'All Rooms' : type}
               </button>
             ))}
           </div>
@@ -954,25 +1089,36 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {filtered.map(room => {
             let status;
-            if (searched && checkIn && checkOut) status = getRoomStatusForDates(room.room_number, checkIn, checkOut).status;
-            else status = getCurrentRoomStatus(room.room_number);
+            if (searched && checkIn && checkOut) status = getRoomStatusForDates(room.number, checkIn, checkOut).status;
+            else status = getCurrentRoomStatus(room.number);
             const cfg = getStatusConfig(status);
             const priceCalc = (status !== 'available' && searched && checkIn && checkOut) ? calcTotalPrice(checkIn, checkOut, room.price_per_night) : null;
             return (
               <div
-                key={room.id}
+                key={room.number}
                 onClick={() => setSelectedRoom({ ...room, status, priceCalc })}
                 className={`group relative overflow-hidden rounded-xl border-2 transition-all duration-300 hover:scale-105 cursor-pointer ${cfg.cardBorder} bg-white/5 hover:bg-white/10`}
               >
+                <button
+                  type="button"
+                  title="Book this room"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBookingRoom({ ...room, status, priceCalc });
+                  }}
+                  className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center shadow-lg hover:opacity-90 transition-all"
+                >
+                  <FaPlus className="text-xs" />
+                </button>
                 <div className="p-4 text-center">
                   <div className={`w-12 h-12 mx-auto mb-2 rounded-full flex items-center justify-center ${cfg.bg}`}>
                     {cfg.icon}
                   </div>
-                  <div className="text-white font-bold text-lg">Room {room.room_number}</div>
+                  <div className="text-white font-bold text-lg">Room {room.number}</div>
                   <div className={`text-xs font-medium mt-1 px-2 py-0.5 rounded-full inline-block ${cfg.bg} ${cfg.text}`}>
                     {cfg.label}
                   </div>
-                  <div className="text-white text-sm mt-2">Room Type: {room.room_type}</div>
+                  <div className="text-white text-sm mt-2">Room Type: {room.room_type_display}</div>
                   <div className="text-gray-300 text-sm">Price / Night: {formatUSD(room.price_per_night)}</div>
                   {priceCalc && (
                     <div className="mt-2 text-[10px] text-gray-400">
@@ -1002,42 +1148,40 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
             <div className="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full transition-all duration-500" style={{ width: `${occupancyRate}%` }} />
           </div>
         </div>
+          </>
+        )}
       </div>
 
-      {/* Room Details Modal – updated to USD */}
       {selectedRoom && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fadeInUp" onClick={() => setSelectedRoom(null)}>
           <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto shadow-2xl border border-white/20" onClick={(e) => e.stopPropagation()}>
             <div className="relative h-72 md:h-96">
               <img
                 src={selectedRoom.images[currentImageIndex]}
-                alt={`Room ${selectedRoom.room_number}`}
+                alt={`Room ${selectedRoom.number}`}
                 className="w-full h-full object-cover rounded-t-2xl"
                 onError={(e) => { e.target.src = FALLBACK_IMGS[0]; }}
               />
               <button onClick={() => setSelectedRoom(null)} className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition">
                 <FaTimes />
               </button>
-
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-black/50 rounded-full px-3 py-1">
                 <button onClick={() => setCurrentImageIndex(p => p === 0 ? selectedRoom.images.length - 1 : p - 1)} className="text-white hover:text-purple-400 transition p-1"><FaChevronLeft /></button>
                 <span className="text-white text-sm px-2">{currentImageIndex + 1} / {selectedRoom.images.length}</span>
                 <button onClick={() => setCurrentImageIndex(p => p === selectedRoom.images.length - 1 ? 0 : p + 1)} className="text-white hover:text-purple-400 transition p-1"><FaChevronRight /></button>
                 <button onClick={() => setIsAutoPlaying(!isAutoPlaying)} className="text-white hover:text-purple-400 transition p-1">{isAutoPlaying ? <FaPause /> : <FaPlay />}</button>
               </div>
-
               <div className="absolute top-4 left-4">
                 <span className={`px-3 py-1 rounded-full text-xs font-semibold ${selectedRoom.status === 'available' ? 'bg-green-500 text-white' : selectedRoom.status === 'booked' ? 'bg-amber-500 text-white' : 'bg-red-500 text-white'}`}>
                   {selectedRoom.status === 'available' ? 'Available' : selectedRoom.status === 'booked' ? 'Booked' : 'Occupied'}
                 </span>
               </div>
             </div>
-
             <div className="p-6">
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-2xl font-bold text-white">Room {selectedRoom.room_number}</h3>
-                  <p className="text-gray-300 mt-1 capitalize">{selectedRoom.room_type} Room</p>
+                  <h3 className="text-2xl font-bold text-white">Room {selectedRoom.number}</h3>
+                  <p className="text-gray-300 mt-1 capitalize">{selectedRoom.room_type_display} Room</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-gray-400">Price per night</p>
@@ -1049,9 +1193,7 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
                   )}
                 </div>
               </div>
-
               <p className="text-gray-300 mb-4">{selectedRoom.description}</p>
-
               <div className="mb-4">
                 <h4 className="text-white font-semibold mb-2">Amenities &amp; Facilities</h4>
                 <div className="grid grid-cols-2 gap-2">
@@ -1073,9 +1215,8 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
                   ))}
                 </div>
               </div>
-
               {selectedRoom.status !== 'available' && (() => {
-                const booking = bookings.find(b => extractRoomNumber(b.room) === selectedRoom.room_number);
+                const booking = bookings.find(b => extractRoomNumber(b.room) === selectedRoom.number);
                 if (!booking) return null;
                 return (
                   <div className={`mb-4 rounded-lg p-3 space-y-1 ${selectedRoom.status === 'occupied' ? 'bg-red-500/10 border border-red-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
@@ -1088,8 +1229,16 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
                   </div>
                 );
               })()}
-
-              <div className="mt-6 flex justify-end">
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setBookingRoom(selectedRoom);
+                    setSelectedRoom(null);
+                  }}
+                  className="px-6 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold hover:opacity-90 transition flex items-center gap-2"
+                >
+                  <FaPlus className="text-xs" /> Book This Room
+                </button>
                 <button onClick={() => setSelectedRoom(null)} className="px-6 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition">
                   Close
                 </button>
@@ -1098,17 +1247,33 @@ const GuestRoomStatusPanel = ({ hotelId }) => {
           </div>
         </div>
       )}
+
+      {bookingRoom && (
+        <RoomBookingPopup
+          hotelId={hotelId}
+          hotel={hotel}
+          room={bookingRoom}
+          bookings={bookings}
+          onBookingSuccess={onBookingSuccess}
+          setAllRooms={setAllRooms}
+          onClose={() => setBookingRoom(null)}
+        />
+      )}
     </>
   );
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   MAIN HotelInfo (unchanged)
+   MAIN HotelInfo – with auto‑sliding carousel for hotel images
 ══════════════════════════════════════════════════════════════════════ */
 export default function HotelInfo({ id: propId } = {}) {
   const router = useRouter();
   const id = propId;
   const [hotel, setHotel] = useState(null);
+  const [hotelImages, setHotelImages] = useState([]);
+  const [currentImage, setCurrentImage] = useState(0);
+  const [autoSlideActive, setAutoSlideActive] = useState(true);
+  const autoSlideIntervalRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
@@ -1123,16 +1288,54 @@ export default function HotelInfo({ id: propId } = {}) {
   const reviewsRef = useRef(null);
   const dealsRef = useRef(null);
   const [showToast, setShowToast] = useState(null);
+  const [globalBookings, setGlobalBookings] = useState([]);
+  const [globalRooms, setGlobalRooms] = useState([]);
 
   useEffect(() => { if (!id && typeof window !== 'undefined') router.push('/guest/dashboard'); }, [id, router]);
 
-  const toast = (msg,type='info') => { setShowToast({ message: msg, type }); setTimeout(() => setShowToast(null), 3000); };
-  const scrollToSection = (key) => { const refs = { overview:overviewRef, prices:pricesRef, facilities:facilitiesRef, legal:legalRef, reviews:reviewsRef, deals:dealsRef }; const target = refs[key]; if (target?.current) target.current.scrollIntoView({ behavior:'smooth', block:'start' }); };
-  const handleTabClick = (key) => { setActiveTab(key); scrollToSection(key); };
-  const toggleFav = (hotelId) => { setFavHotels(prev => prev.includes(hotelId) ? prev.filter(x=>x!==hotelId) : [...prev, hotelId]); toast(hotelId ? (favHotels.includes(hotelId) ? 'Removed from favorites' : 'Added to favorites') : ''); };
-  const getStandardFacilities = () => [
-    { name:'Free High-Speed WiFi', icon:FaWifi, available:true }, { name:'Air Conditioning', icon:FaSnowflake, available:true }, { name:'24/7 Room Service', icon:FaConciergeBell, available:true }, { name:'Free Parking', icon:FaParking, available:true }, { name:'Multi-Cuisine Restaurant', icon:FaUtensils, available:true }, { name:'Swimming Pool', icon:FaSwimmer, available:true }, { name:'Fitness Center', icon:FaDumbbell, available:true }
-  ];
+  const startAutoSlide = () => {
+    if (autoSlideIntervalRef.current) clearInterval(autoSlideIntervalRef.current);
+    if (!autoSlideActive || hotelImages.length <= 1) return;
+    autoSlideIntervalRef.current = setInterval(() => {
+      setCurrentImage(prev => (prev + 1) % hotelImages.length);
+    }, 4000);
+  };
+  const stopAutoSlide = () => {
+    if (autoSlideIntervalRef.current) {
+      clearInterval(autoSlideIntervalRef.current);
+      autoSlideIntervalRef.current = null;
+    }
+  };
+  const resetAutoSlide = () => {
+    stopAutoSlide();
+    startAutoSlide();
+  };
+  const toggleAutoSlide = () => {
+    setAutoSlideActive(prev => !prev);
+  };
+  useEffect(() => {
+    if (autoSlideActive && hotelImages.length > 1) {
+      startAutoSlide();
+    } else {
+      stopAutoSlide();
+    }
+    return () => stopAutoSlide();
+  }, [autoSlideActive, hotelImages.length]);
+
+  const nextImage = () => {
+    if (hotelImages.length === 0) return;
+    setCurrentImage((currentImage + 1) % hotelImages.length);
+    resetAutoSlide();
+  };
+  const prevImage = () => {
+    if (hotelImages.length === 0) return;
+    setCurrentImage((currentImage - 1 + hotelImages.length) % hotelImages.length);
+    resetAutoSlide();
+  };
+  const goToImage = (idx) => {
+    setCurrentImage(idx);
+    resetAutoSlide();
+  };
 
   useEffect(() => {
     const fetchHotelData = async () => {
@@ -1142,36 +1345,86 @@ export default function HotelInfo({ id: propId } = {}) {
         const response = await guestApi.get(`/hotels/${id}/hprofile/`);
         const hotelData = response.data;
         setHotel(hotelData);
+        const imgs = [hotelData.image1, hotelData.image2, hotelData.image3, hotelData.image4].filter(Boolean);
+        setHotelImages(imgs.length ? imgs : FALLBACK_IMGS);
         try {
           const roomsRes = await guestApi.get(`/hotels/${id}/guest-rooms/`);
           const rooms = roomsRes.data.rooms || [];
-          const mapped = rooms.map(r => ({ id: r.room_number, room_type: r.room_type, price_per_night: r.price_per_night, capacity: r.capacity, amenities: r.amenities, bed_type: r.bed_type }));
+          const mapped = rooms.map(r => ({ id: r.room_number, room_type: mapRoomTypeDisplay(r.room_type), price_per_night: r.price_per_night, capacity: r.capacity, amenities: r.amenities, bed_type: r.bed_type }));
           setRoomTypes(mapped);
-        } catch { setRoomTypes([ { id:1, room_type:'Standard', price_per_night: hotelData.normal_price || 5000, capacity:2 }, { id:2, room_type:'Deluxe', price_per_night: hotelData.deluxe_price || 8000, capacity:3 }, { id:3, room_type:'Suite', price_per_night: hotelData.suite_price || 12000, capacity:4 } ]); }
+        } catch { setRoomTypes([ { id:1, room_type:'Normal', price_per_night: hotelData.normal_price || 5000, capacity:2 }, { id:2, room_type:'Deluxe', price_per_night: hotelData.deluxe_price || 8000, capacity:3 }, { id:3, room_type:'Suite', price_per_night: hotelData.suite_price || 12000, capacity:4 } ]); }
         setReviews([
           { id:1, user:{ first_name:'Mridu', last_name:'' }, country:'United States', rating:8.0, comment:'Good location, clean property, good value.', created_at:'2024-12-15' },
           { id:2, user:{ first_name:'Sunny', last_name:'' }, country:'India', rating:9.2, comment:'Our stay was truly exceptional!', created_at:'2024-12-10' },
           { id:3, user:{ first_name:'Neeraj', last_name:'' }, country:'United States', rating:8.5, comment:'Very clean and well-maintained property.', created_at:'2024-12-05' },
           { id:4, user:{ first_name:'Priya', last_name:'' }, country:'Nepal', rating:7.8, comment:'Great hospitality and wonderful food.', created_at:'2024-11-28' }
         ]);
-        const facilitiesList = getStandardFacilities();
-        if (hotelData.has_pool === false) { const idx = facilitiesList.findIndex(f=>f.name==='Swimming Pool'); if(idx!==-1) facilitiesList[idx].available=false; }
-        if (hotelData.has_gym === false) { const idx = facilitiesList.findIndex(f=>f.name==='Fitness Center'); if(idx!==-1) facilitiesList[idx].available=false; }
-        if (hotelData.has_restaurant === false) { const idx = facilitiesList.findIndex(f=>f.name==='Multi-Cuisine Restaurant'); if(idx!==-1) facilitiesList[idx].available=false; }
-        if (hotelData.has_parking === false) { const idx = facilitiesList.findIndex(f=>f.name==='Free Parking'); if(idx!==-1) facilitiesList[idx].available=false; }
-        if (hotelData.has_room_service === false) { const idx = facilitiesList.findIndex(f=>f.name==='24/7 Room Service'); if(idx!==-1) facilitiesList[idx].available=false; }
+        const facilitiesList = [
+          { name:'Free High-Speed WiFi', icon:FaWifi, available:true },
+          { name:'Air Conditioning', icon:FaSnowflake, available:true },
+          { name:'24/7 Room Service', icon:FaConciergeBell, available:true },
+          { name:'Free Parking', icon:FaParking, available:true },
+          { name:'Multi-Cuisine Restaurant', icon:FaUtensils, available:true },
+          { name:'Swimming Pool', icon:FaSwimmer, available:hotelData.has_pool !== false },
+          { name:'Fitness Center', icon:FaDumbbell, available:hotelData.has_gym !== false }
+        ];
         setFacilities(facilitiesList);
+        const bookingsRes = await guestApi.get(`/hotels/${id}/guest-bookings/`);
+        setGlobalBookings(bookingsRes.data.bookings || []);
+        const roomsRes = await guestApi.get(`/hotels/${id}/guest-rooms/`);
+        const rawRooms = roomsRes.data.rooms || [];
+        const rooms = rawRooms.map(r => {
+          const lowerType = r.room_type?.toLowerCase();
+          let internalType = 'normal';
+          if (lowerType === 'standard' || lowerType === 'normal') internalType = 'normal';
+          else if (lowerType === 'deluxe') internalType = 'deluxe';
+          else if (lowerType === 'suite') internalType = 'suite';
+          else internalType = 'normal';
+          return {
+            number: r.room_number,
+            type: mapRoomTypeDisplay(r.room_type),
+            internalType,
+            price: r.price_per_night,
+          };
+        });
+        setGlobalRooms(rooms);
       } catch (err) {
         setError(err.message || 'Failed to load hotel details');
-        const demo = { id:parseInt(id), name:'Grand Himalaya Hotel', location:'Lakeside, Pokhara', star_rating:5, review_score:4.8, description:'Experience unparalleled luxury...', contact:'+977-61-123456', email:'info@grandhimalaya.com', image1:FALLBACK_IMGS[0], has_pool:true, has_gym:true, has_restaurant:true, has_parking:true, has_room_service:true, check_in_time:'14:00', check_out_time:'12:00', cancellation_policy:'Free cancellation up to 24 hours before check-in.', payment_methods:['Visa','Mastercard','American Express','Cash'], children_policy:'Children of all ages are welcome.', pet_policy:'Pets are not allowed.', smoking_policy:'Non-smoking rooms available.' };
+        const demo = { id:parseInt(id), name:'Grand Himalaya Hotel', location:'Lakeside, Pokhara', star_rating:5, review_score:4.8, description:'Experience unparalleled luxury...', contact:'+977-61-123456', email:'info@grandhimalaya.com', image1:FALLBACK_IMGS[0], image2:FALLBACK_IMGS[1], image3:FALLBACK_IMGS[2], image4:FALLBACK_IMGS[3], has_pool:true, has_gym:true, has_restaurant:true, has_parking:true, has_room_service:true, check_in_time:'14:00', check_out_time:'12:00', cancellation_policy:'Free cancellation up to 24 hours before check-in.', payment_methods:['Visa','Mastercard','American Express','Cash'], children_policy:'Children of all ages are welcome.', pet_policy:'Pets are not allowed.', smoking_policy:'Non-smoking rooms available.' };
         setHotel(demo);
-        setRoomTypes([ { id:1, room_type:'Standard', price_per_night:5000, capacity:2 }, { id:2, room_type:'Deluxe', price_per_night:8500, capacity:3 }, { id:3, room_type:'Suite', price_per_night:15000, capacity:4 } ]);
-        setFacilities(getStandardFacilities());
+        setHotelImages(FALLBACK_IMGS);
+        setRoomTypes([ { id:1, room_type:'Normal', price_per_night:5000, capacity:2 }, { id:2, room_type:'Deluxe', price_per_night:8500, capacity:3 }, { id:3, room_type:'Suite', price_per_night:15000, capacity:4 } ]);
+        setFacilities([
+          { name:'Free High-Speed WiFi', icon:FaWifi, available:true },
+          { name:'Air Conditioning', icon:FaSnowflake, available:true },
+          { name:'24/7 Room Service', icon:FaConciergeBell, available:true },
+          { name:'Free Parking', icon:FaParking, available:true },
+          { name:'Multi-Cuisine Restaurant', icon:FaUtensils, available:true },
+          { name:'Swimming Pool', icon:FaSwimmer, available:true },
+          { name:'Fitness Center', icon:FaDumbbell, available:true }
+        ]);
         setReviews([ { id:1, user:{ first_name:'Demo', last_name:'' }, country:'Nepal', rating:9.0, comment:'Great hotel!', created_at:new Date().toISOString() } ]);
+        setGlobalBookings([]);
+        const demoRooms = [];
+        for (let i = 1; i <= 20; i++) {
+          const internalType = i <= 10 ? 'normal' : (i <= 16 ? 'deluxe' : 'suite');
+          demoRooms.push({
+            number: 100 + i,
+            type: internalType === 'normal' ? 'Normal' : (internalType === 'deluxe' ? 'Deluxe' : 'Suite'),
+            internalType,
+            price: internalType === 'normal' ? 5000 : (internalType === 'deluxe' ? 8500 : 15000),
+          });
+        }
+        setGlobalRooms(demoRooms);
       } finally { setLoading(false); }
     };
     fetchHotelData();
   }, [id]);
+
+  const toast = (msg,type='info') => { setShowToast({ message: msg, type }); setTimeout(() => setShowToast(null), 3000); };
+  const scrollToSection = (key) => { const refs = { overview:overviewRef, prices:pricesRef, facilities:facilitiesRef, legal:legalRef, reviews:reviewsRef, deals:dealsRef }; const target = refs[key]; if (target?.current) target.current.scrollIntoView({ behavior:'smooth', block:'start' }); };
+  const handleTabClick = (key) => { setActiveTab(key); scrollToSection(key); };
+  const toggleFav = (hotelId) => { setFavHotels(prev => prev.includes(hotelId) ? prev.filter(x=>x!==hotelId) : [...prev, hotelId]); toast(hotelId ? (favHotels.includes(hotelId) ? 'Removed from favorites' : 'Added to favorites') : ''); };
 
   if (loading) return <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center"><div className="text-center"><FaSpinner className="animate-spin text-5xl mx-auto mb-4 text-purple-400" /><p className="text-white text-lg">Loading hotel details...</p></div></div>;
   if (error || !hotel) return <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center"><div className="text-center text-red-400 bg-black/30 p-8 rounded-2xl"><p className="text-lg">{error || 'Hotel not found'}</p><button onClick={() => router.push('/guest/dashboard')} className="mt-6 px-6 py-2 bg-purple-500/20 hover:bg-purple-500/30 rounded-lg text-purple-300 transition-all">← Back to Dashboard</button></div></div>;
@@ -1201,11 +1454,43 @@ export default function HotelInfo({ id: propId } = {}) {
       <div className="sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10"><div className="max-w-7xl mx-auto px-4"><div className="flex items-center justify-between py-3"><button onClick={() => router.push('/guest/dashboard')} className="flex items-center gap-2 text-gray-300 hover:text-white"><FaArrowLeft /><span className="hidden sm:inline">Back to Hotels</span></button><div className="flex overflow-x-auto gap-1">{['overview','prices','facilities','legal','reviews','deals'].map(tab => (<button key={tab} onClick={() => handleTabClick(tab)} className={`px-4 py-2 text-sm font-medium capitalize whitespace-nowrap transition-all border-b-2 ${activeTab===tab ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-white'}`}>{tab==='prices'?'Room Availability':tab==='deals'?'Weekend Deals':tab}</button>))}</div></div></div></div>
 
       <div className="max-w-7xl mx-auto px-4 py-6 relative z-10">
-        <div className="relative h-96 rounded-2xl overflow-hidden mb-8 shadow-2xl"><img src={hotel.image1 || hotel.image || FALLBACK_IMGS[0]} alt={hotel.name} className="w-full h-full object-cover" onError={e=>{ e.target.src=FALLBACK_IMGS[0]; }} /><div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" /><div className="absolute bottom-6 left-6 right-6"><div className="flex flex-wrap items-center gap-3 mb-2"><StarRating rating={hotel.star_rating || 4} />{hotel.review_score && <span className="bg-green-600 text-white text-sm px-3 py-1 rounded-full font-bold">★ {(hotel.review_score*10/5).toFixed(1)}</span>}<span className="text-gray-300 text-sm">{reviews.length} reviews</span><button onClick={() => toggleFav(hotel.id)} className="flex items-center gap-1 text-sm text-gray-300 hover:text-red-400 ml-auto">{favHotels.includes(hotel.id) ? <FaHeart className="text-red-500" /> : <FaRegHeart />}<span className="hidden sm:inline">{favHotels.includes(hotel.id) ? 'Saved' : 'Save'}</span></button></div><h1 className="text-3xl md:text-4xl font-bold text-white mb-2">{hotel.name}</h1><div className="flex flex-wrap items-center gap-4 text-gray-200 text-sm"><div className="flex items-center gap-1"><FaMapMarkerAlt className="text-purple-400" /><span>{hotel.location || 'Nepal'}</span></div><div className="flex items-center gap-1"><FaPhoneAlt className="text-purple-400 text-xs" /><span>{hotel.contact || '+977-1-1234567'}</span></div><div className="flex items-center gap-1"><FaEnvelope className="text-purple-400 text-xs" /><span>{hotel.email || 'info@hotel.com'}</span></div></div></div></div>
+        {/* Auto-sliding carousel */}
+        <div className="relative h-96 rounded-2xl overflow-hidden mb-8 shadow-2xl">
+          <img src={hotelImages[currentImage]} alt={hotel.name} className="w-full h-full object-cover transition-all duration-500" onError={e=>{ e.target.src=FALLBACK_IMGS[0]; }} />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+          {hotelImages.length > 1 && (
+            <>
+              <button onClick={prevImage} className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition backdrop-blur-sm z-10"><FaChevronLeft /></button>
+              <button onClick={nextImage} className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition backdrop-blur-sm z-10"><FaChevronRight /></button>
+              <button onClick={toggleAutoSlide} className="absolute bottom-4 right-4 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition backdrop-blur-sm z-10">{autoSlideActive ? <FaPause size={14} /> : <FaPlay size={14} />}</button>
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+                {hotelImages.map((_, idx) => (<button key={idx} onClick={() => goToImage(idx)} className={`w-2 h-2 rounded-full transition ${idx === currentImage ? 'bg-purple-400 w-4' : 'bg-white/50'}`} />))}
+              </div>
+              {autoSlideActive && (<div className="absolute top-4 right-4 bg-black/50 backdrop-blur-sm rounded-full px-2 py-1 text-xs text-purple-400 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></div>Auto-slide</div>)}
+            </>
+          )}
+          <div className="absolute bottom-6 left-6 right-6">
+            <div className="flex flex-wrap items-center gap-3 mb-2">
+              <StarRating rating={hotel.star_rating || 4} />
+              {hotel.review_score && <span className="bg-green-600 text-white text-sm px-3 py-1 rounded-full font-bold">★ {(hotel.review_score*10/5).toFixed(1)}</span>}
+              <span className="text-gray-300 text-sm">{reviews.length} reviews</span>
+              <button onClick={() => toggleFav(hotel.id)} className="flex items-center gap-1 text-sm text-gray-300 hover:text-red-400 ml-auto">
+                {favHotels.includes(hotel.id) ? <FaHeart className="text-red-500" /> : <FaRegHeart />}
+                <span className="hidden sm:inline">{favHotels.includes(hotel.id) ? 'Saved' : 'Save'}</span>
+              </button>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">{hotel.name}</h1>
+            <div className="flex flex-wrap items-center gap-4 text-gray-200 text-sm">
+              <div className="flex items-center gap-1"><FaMapMarkerAlt className="text-purple-400" /><span>{hotel.location || 'Nepal'}</span></div>
+              <div className="flex items-center gap-1"><FaPhoneAlt className="text-purple-400 text-xs" /><span>{hotel.contact || '+977-1-1234567'}</span></div>
+              <div className="flex items-center gap-1"><FaEnvelope className="text-purple-400 text-xs" /><span>{hotel.email || 'info@hotel.com'}</span></div>
+            </div>
+          </div>
+        </div>
 
-        <div ref={overviewRef} className="scroll-mt-20 mb-12"><div className="grid lg:grid-cols-3 gap-8 items-stretch"><div className="lg:col-span-2 flex flex-col gap-6"><div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 hover-scale"><h2 className="text-xl font-semibold text-white mb-4">About {hotel.name}</h2><p className="text-gray-300 leading-relaxed">{hotel.description || 'Experience luxury and comfort at its finest.'}</p><div className="mt-5 p-4 bg-white/5 rounded-xl border border-white/10"><div className="flex items-center gap-2 mb-3"><div className="w-1 h-5 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" /><h3 className="text-sm font-bold text-purple-300 uppercase tracking-wider">About Dwarkias</h3></div><p className="text-gray-300 text-sm leading-relaxed">Dwarkias is a renowned hospitality brand deeply rooted in India's cultural and spiritual heritage, celebrated for its vegetarian cuisine and heritage accommodations across sacred pilgrimage destinations like Mathura, Vrindavan, Dwarka, and Pushkar. With a philosophy of service as devotion, Dwarkias offers clean, warm, and authentic hospitality, blending modern amenities with traditional values.</p></div><div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm"><div className="flex items-center gap-3 text-gray-300"><FaPhoneAlt className="text-purple-400" /><span>{hotel.contact || '+977-1-1234567'}</span></div><div className="flex items-center gap-3 text-gray-300"><FaEnvelope className="text-purple-400" /><span>{hotel.email || 'info@hotel.com'}</span></div><div className="flex items-center gap-3 text-gray-300 sm:col-span-2"><FaMapMarkerAlt className="text-purple-400" /><span>{hotel.location || 'Kathmandu, Nepal'}</span></div></div></div><div className="flex-1 min-h-0"><HotelMapCard hotel={hotel} /></div></div><div className="lg:col-span-1"><div className="sticky top-24 h-full"><EmbeddedBookingWidget hotelId={id} roomTypes={roomTypes} hotel={hotel} /></div></div></div></div>
+        <div ref={overviewRef} className="scroll-mt-20 mb-12"><div className="grid lg:grid-cols-2 gap-8 items-stretch"><div className="flex flex-col gap-6"><div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 hover-scale"><h2 className="text-xl font-semibold text-white mb-4">About {hotel.name}</h2><p className="text-gray-300 leading-relaxed">{hotel.description || 'Experience luxury and comfort at its finest.'}</p><div className="mt-5 p-4 bg-white/5 rounded-xl border border-white/10"><div className="flex items-center gap-2 mb-3"><div className="w-1 h-5 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" /><h3 className="text-sm font-bold text-purple-300 uppercase tracking-wider">About Dwarkias</h3></div><p className="text-gray-300 text-sm leading-relaxed">Dwarkias is a renowned hospitality brand deeply rooted in India's cultural and spiritual heritage, celebrated for its vegetarian cuisine and heritage accommodations across sacred pilgrimage destinations like Mathura, Vrindavan, Dwarka, and Pushkar. With a philosophy of service as devotion, Dwarkias offers clean, warm, and authentic hospitality, blending modern amenities with traditional values.</p></div><div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm"><div className="flex items-center gap-3 text-gray-300"><FaPhoneAlt className="text-purple-400" /><span>{hotel.contact || '+977-1-1234567'}</span></div><div className="flex items-center gap-3 text-gray-300"><FaEnvelope className="text-purple-400" /><span>{hotel.email || 'info@hotel.com'}</span></div><div className="flex items-center gap-3 text-gray-300 sm:col-span-2"><FaMapMarkerAlt className="text-purple-400" /><span>{hotel.location || 'Kathmandu, Nepal'}</span></div></div></div></div><div className="flex-1 min-h-0"><HotelMapCard hotel={hotel} /></div></div></div>
 
-        <div ref={pricesRef} className="scroll-mt-20 mb-12"><GuestRoomStatusPanel hotelId={id} /></div>
+        <div ref={pricesRef} className="scroll-mt-20 mb-12"><GuestRoomStatusPanel hotelId={id} hotel={hotel} bookings={globalBookings} allRooms={globalRooms} onBookingSuccess={setGlobalBookings} setAllRooms={setGlobalRooms} /></div>
 
         <div ref={facilitiesRef} className="scroll-mt-20 mb-12"><div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10"><div className="flex items-center justify-between mb-6"><h2 className="text-2xl font-bold text-white flex items-center gap-2"><FaInfoCircle className="text-purple-400" /> Hotel Facilities & Amenities</h2><span className="text-xs text-purple-400 bg-purple-500/20 px-3 py-1 rounded-full">{facilities.length} Premium Amenities</span></div><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{facilities.map((f,i) => (<div key={i} className="flex items-center gap-3 p-3 bg-black/30 rounded-lg hover:bg-black/40 transition-colors group"><div className={`p-2 rounded-lg ${f.available ? 'bg-purple-500/20' : 'bg-gray-500/20'} group-hover:scale-110 transition-transform`}><f.icon className={`text-lg ${f.available ? 'text-purple-400' : 'text-gray-500'}`} /></div><span className={`flex-1 text-sm ${f.available ? 'text-gray-300' : 'text-gray-500 line-through'}`}>{f.name}</span>{f.available ? <FaCheckCircle className="text-green-500" /> : <FaTimes className="text-gray-500" />}</div>))}</div></div></div>
 

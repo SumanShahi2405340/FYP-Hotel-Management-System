@@ -34,6 +34,10 @@ export default function OwnerHotelProfile() {
   const [roomImageIndex, setRoomImageIndex] = useState({});
   const [roomAutoPlay, setRoomAutoPlay] = useState({});
 
+  // Main carousel auto-slide state
+  const [autoSlideActive, setAutoSlideActive] = useState(true);
+  const autoSlideIntervalRef = useRef(null);
+
   // Image uploader
   const [showImageUploader, setShowImageUploader] = useState(false);
   const [uploadImages, setUploadImages] = useState([null, null, null, null]);
@@ -45,7 +49,57 @@ export default function OwnerHotelProfile() {
   const fileRefs = [fileRef0, fileRef1, fileRef2, fileRef3];
   const carouselTimer = useRef(null);
 
-  // Auto-slide preview every 4 seconds
+  // --- Auto-slide helpers for main carousel ---
+  const startAutoSlide = () => {
+    if (autoSlideIntervalRef.current) clearInterval(autoSlideIntervalRef.current);
+    if (!autoSlideActive || hotelImages.length <= 1) return;
+    autoSlideIntervalRef.current = setInterval(() => {
+      setCurrentImage(prev => (prev + 1) % hotelImages.length);
+    }, 4000);
+  };
+
+  const stopAutoSlide = () => {
+    if (autoSlideIntervalRef.current) {
+      clearInterval(autoSlideIntervalRef.current);
+      autoSlideIntervalRef.current = null;
+    }
+  };
+
+  const resetAutoSlide = () => {
+    stopAutoSlide();
+    startAutoSlide();
+  };
+
+  // Toggle auto-slide on/off
+  const toggleAutoSlide = () => {
+    setAutoSlideActive(prev => !prev);
+  };
+
+  // Effect for auto-slide: start/stop based on state and images length
+  useEffect(() => {
+    if (autoSlideActive && hotelImages.length > 1) {
+      startAutoSlide();
+    } else {
+      stopAutoSlide();
+    }
+    return () => stopAutoSlide();
+  }, [autoSlideActive, hotelImages.length]);
+
+  // Manual navigation: reset timer on user interaction
+  const nextImage = () => {
+    setCurrentImage((currentImage + 1) % hotelImages.length);
+    resetAutoSlide();
+  };
+  const prevImage = () => {
+    setCurrentImage((currentImage - 1 + hotelImages.length) % hotelImages.length);
+    resetAutoSlide();
+  };
+  const goToImage = (idx) => {
+    setCurrentImage(idx);
+    resetAutoSlide();
+  };
+
+  // Auto-slide preview every 4 seconds (uploader)
   useEffect(() => {
     if (!showImageUploader) { clearInterval(carouselTimer.current); return; }
     const filled = uploadPreviews.filter(Boolean);
@@ -68,7 +122,8 @@ export default function OwnerHotelProfile() {
       const res = await fetch(`http://127.0.0.1:8000/api/hotels/${id}/hprofile/`);
       const data = await res.json();
       setHotel(data);
-      const imgs = [data.image1, data.image2, data.image3].filter(Boolean);
+      // Support up to 4 images
+      const imgs = [data.image1, data.image2, data.image3, data.image4].filter(Boolean);
       if (imgs.length > 0) setHotelImages(imgs);
       if (data.latitude && data.longitude) {
         setMapLocation({ lat: data.latitude, lng: data.longitude, name: data.name, location: data.location });
@@ -230,9 +285,6 @@ export default function OwnerHotelProfile() {
     return () => intervals.forEach(interval => clearInterval(interval));
   }, [rooms, roomAutoPlay]);
 
-  const nextImage = () => setCurrentImage((currentImage + 1) % hotelImages.length);
-  const prevImage = () => setCurrentImage((currentImage - 1 + hotelImages.length) % hotelImages.length);
-
   const getFormattedLocation = () => {
     if (!hotel) return 'Location not available';
     const n = hotel.name || '', l = hotel.location || '';
@@ -251,7 +303,7 @@ export default function OwnerHotelProfile() {
     if (!navigator.geolocation) { setLocationError("Geolocation not supported"); setGettingLocation(false); return; }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const loc = { lat: pos.coordinates.latitude, lng: pos.coordinates.longitude };
         setUserLocation(loc); setGettingLocation(false); setShowDirections(true);
         const dest = mapLocation?.lat && mapLocation?.lng
           ? `${mapLocation.lat},${mapLocation.lng}`
@@ -395,26 +447,46 @@ export default function OwnerHotelProfile() {
                   </div>
                 </div>
 
-                {/* Main carousel */}
+                {/* Main carousel with auto-slide timer */}
                 <div className="glass-card rounded-2xl p-2 mb-8 fade-up" style={{animationDelay:'0.1s',opacity:0}}>
                   <div className="relative w-full h-96 overflow-hidden rounded-xl">
                     <img src={hotelImages[currentImage]} alt={`Hotel view ${currentImage+1}`}
                       className="w-full h-full object-cover transition-all duration-500"
                       onError={e=>{e.target.src='https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800';}}/>
+                    
+                    {/* Navigation Buttons */}
                     <button onClick={prevImage}
-                      className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition backdrop-blur-sm">
+                      className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition backdrop-blur-sm z-10">
                       <FaChevronLeft/>
                     </button>
                     <button onClick={nextImage}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition backdrop-blur-sm">
+                      className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition backdrop-blur-sm z-10">
                       <FaChevronRight/>
                     </button>
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+                    
+                    {/* Play/Pause Button */}
+                    {hotelImages.length > 1 && (
+                      <button onClick={toggleAutoSlide}
+                        className="absolute bottom-4 right-4 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition backdrop-blur-sm z-10">
+                        {autoSlideActive ? <FaPause size={14} /> : <FaPlay size={14} />}
+                      </button>
+                    )}
+                    
+                    {/* Dots Indicator */}
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-10">
                       {hotelImages.map((_,idx)=>(
-                        <button key={idx} onClick={()=>setCurrentImage(idx)}
+                        <button key={idx} onClick={()=>goToImage(idx)}
                           className={`w-2 h-2 rounded-full transition ${idx===currentImage?'bg-amber-400 w-4':'bg-white/50'}`}/>
                       ))}
                     </div>
+                    
+                    {/* Timer indicator (optional decorative) */}
+                    {autoSlideActive && hotelImages.length > 1 && (
+                      <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-sm rounded-full px-2 py-1 text-xs text-amber-400 flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+                        Auto-slide
+                      </div>
+                    )}
                   </div>
                 </div>
 

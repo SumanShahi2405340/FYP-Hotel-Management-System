@@ -366,155 +366,226 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 
 class AdminLoginView(APIView):
-    permission_classes = []  # Allow public access
-    
+    permission_classes = [AllowAny]
+
     def post(self, request):
-        email = request.data.get("email")
-        password = request.data.get("password")
-        
-        print(f"Login attempt - Email: {email}")
-        
-        if not email or not password:
-            return Response(
-                {'error': 'Email and password are required'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # First, try to find user by email
         try:
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
-            user_obj = User.objects.get(email=email)
-            username = user_obj.username
-            print(f"User found: {username}")
-        except User.DoesNotExist:
-            print(f"No user found with email: {email}")
-            return Response(
-                {'error': 'Invalid credentials'}, 
-                status=status.HTTP_401_UNAUTHORIZED
+            email = (request.data.get("email") or "").strip()
+            password = request.data.get("password") or ""
+
+            print(f"Login attempt - Email: {email}")
+
+            if not email or not password:
+                return Response(
+                    {"error": "Email and password are required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Use filter().first() instead of get() so duplicate emails do not crash with 500.
+            user_obj = (
+                User.objects.filter(email__iexact=email, is_superuser=True).first()
+                or User.objects.filter(email__iexact=email, is_staff=True).first()
+                or User.objects.filter(email__iexact=email).first()
             )
-        
-        # Authenticate using username
-        user = authenticate(request, username=username, password=password)
-        
-        if user is not None:
-            if user.is_staff or user.is_superuser:
-                # Login the user (create session)
-                login(request, user)
-                
-                # Generate JWT tokens
-                refresh = RefreshToken.for_user(user)
-                
-                return Response({
-                    'success': True,
-                    'message': 'Login successful',
-                    'access': str(refresh.access_token),
-                    'refresh': str(refresh),
-                    'user': {
-                        'id': user.id,
-                        'username': user.username,
-                        'email': user.email,
-                        'is_staff': user.is_staff,
-                        'is_superuser': user.is_superuser
-                    }
-                }, status=status.HTTP_200_OK)
-            else:
+
+            if not user_obj:
+                print(f"No user found with email: {email}")
+                return Response(
+                    {"error": "Invalid credentials"},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+
+            user = authenticate(
+                request,
+                username=user_obj.username,
+                password=password,
+            )
+
+            if user is None:
+                print(f"Authentication failed for username: {user_obj.username}")
+                return Response(
+                    {"error": "Invalid credentials"},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+
+            if not (user.is_staff or user.is_superuser):
                 print(f"User is not staff/superuser: {user.username}")
                 return Response(
-                    {'error': 'You do not have admin permissions'}, 
-                    status=status.HTTP_403_FORBIDDEN
+                    {"error": "You do not have admin permissions"},
+                    status=status.HTTP_403_FORBIDDEN,
                 )
-        
-        print(f"Authentication failed for username: {username}")
-        return Response(
-            {'error': 'Invalid credentials'}, 
-            status=status.HTTP_401_UNAUTHORIZED
-        )
+
+            # JWT login only. Do not call Django session login(request, user).
+            refresh = RefreshToken.for_user(user)
+
+            return Response(
+                {
+                    "success": True,
+                    "message": "Login successful",
+                    "access": str(refresh.access_token),
+                    "refresh": str(refresh),
+                    "user": {
+                        "id": user.id,
+                        "username": user.username,
+                        "email": user.email,
+                        "is_staff": user.is_staff,
+                        "is_superuser": user.is_superuser,
+                    },
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            import traceback
+            print("ADMIN LOGIN ERROR:", str(e))
+            print(traceback.format_exc())
+            return Response(
+                {"error": f"Server error: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
     
 class OTPRequestView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
         serializer = OTPRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        email = serializer.validated_data['email']
-        
+        email = serializer.validated_data["email"]
+
         users = User.objects.filter(email=email)
         if not users.exists():
-            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        user = None
-        for u in users:
-            if u.is_staff or u.is_superuser:
-                user = u
-                break
-        
-        if not user:
-            user = users.first()
+        user = users.filter(is_staff=True).first() or users.filter(is_superuser=True).first() or users.first()
 
         otp = str(random.randint(100000, 999999))
-        
-        request.session['reset_otp'] = otp
-        request.session['reset_user_id'] = user.id
-        request.session['reset_user_email'] = email
-        request.session.set_expiry(600)
+        cache_key_otp = f"admin_reset_otp_{email}"
+        cache_key_user = f"admin_reset_user_id_{email}"
+
+        cache.set(cache_key_otp, otp, timeout=600)
+        cache.set(cache_key_user, user.id, timeout=600)
+
+        print(f"Admin OTP for {email}: {otp}")
 
         try:
             send_mail(
-                subject='Password Reset OTP - CloudInn',
-                message=f'Your OTP for password reset is: {otp}\n\nThis OTP is valid for 10 minutes.\n\nIf you did not request this, please ignore this email.',
+                subject="Password Reset OTP - CloudInn",
+                message=(
+                    f"Your OTP for password reset is: {otp}\n\n"
+                    "This OTP is valid for 10 minutes.\n\n"
+                    "If you did not request this, please ignore this email."
+                ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[user.email],
                 fail_silently=False,
             )
         except Exception as e:
-            return Response({'error': f'Failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": f"Failed to send email: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
-        return Response({
-            'message': 'OTP has been sent to your email address',
-            'email': email
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {"message": "OTP has been sent to your email address", "email": email},
+            status=status.HTTP_200_OK,
+        )
+
 
 class OTPVerifyView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
         serializer = OTPVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        email = serializer.validated_data.get('email')
-        otp_entered = serializer.validated_data.get('otp')
+        email = serializer.validated_data.get("email")
+        otp_entered = serializer.validated_data.get("otp")
 
-        stored_otp = request.session.get('reset_otp')
-        stored_email = request.session.get('reset_user_email')
+        stored_otp = cache.get(f"admin_reset_otp_{email}")
+        user_id = cache.get(f"admin_reset_user_id_{email}")
 
-        if not stored_otp:
-            return Response({'error': 'OTP has expired. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not stored_otp or not user_id:
+            return Response(
+                {"error": "OTP has expired. Please request a new OTP."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if str(stored_otp) != str(otp_entered):
-            return Response({'error': 'Invalid OTP. Please try again.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if stored_email != email:
-            return Response({'error': 'Email mismatch. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        user_id = request.session.get('reset_user_id')
-        if not user_id:
-            return Response({'error': 'Session expired. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Invalid OTP. Please try again."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+            cache.delete(f"admin_reset_otp_{email}")
+            cache.delete(f"admin_reset_user_id_{email}")
+            cache.delete(f"admin_reset_verified_{email}")
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        request.session.pop('reset_otp', None)
-        request.session.pop('reset_user_id', None)
-        request.session.pop('reset_user_email', None)
+        # Do NOT login or delete OTP here.
+        # Mark OTP verified so AdminResetPassword.jsx can update password next.
+        cache.set(f"admin_reset_verified_{email}", True, timeout=600)
 
-        login(request, user)
+        return Response(
+            {
+                "message": "OTP verified successfully. Please reset your password.",
+                "email": email,
+                "verified": True,
+            },
+            status=status.HTTP_200_OK,
+        )
 
-        return Response({
-            'message': 'OTP verified successfully. You are now logged in.',
-            'user_id': user.id,
-            'email': user.email,
-            'is_admin': user.is_staff
-        }, status=status.HTTP_200_OK)
+
+class AdminUpdatePasswordView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        new_password = request.data.get("new_password")
+
+        if not email or not new_password:
+            return Response(
+                {"error": "Email and new password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(new_password) < 6:
+            return Response(
+                {"error": "Password must be at least 6 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        verified = cache.get(f"admin_reset_verified_{email}")
+        user_id = cache.get(f"admin_reset_user_id_{email}")
+
+        if not verified or not user_id:
+            return Response(
+                {"error": "OTP not verified or session expired. Please request a new OTP."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = User.objects.get(id=user_id, email=email)
+        except User.DoesNotExist:
+            cache.delete(f"admin_reset_otp_{email}")
+            cache.delete(f"admin_reset_user_id_{email}")
+            cache.delete(f"admin_reset_verified_{email}")
+            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        user.set_password(new_password)
+        user.save()
+
+        cache.delete(f"admin_reset_otp_{email}")
+        cache.delete(f"admin_reset_user_id_{email}")
+        cache.delete(f"admin_reset_verified_{email}")
+
+        return Response(
+            {"message": "Password updated successfully. Please login with your new password."},
+            status=status.HTTP_200_OK,
+        )
 
 # ==================== OWNER AUTHENTICATION VIEWS ====================
 

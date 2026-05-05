@@ -25,10 +25,11 @@ export default function AdminOTPVerifyForm() {
     try {
       console.log("Verifying OTP for:", email, "with code:", otp);
       const res = await api.post('/api/verify-otp/', { email, otp }); 
-      setMessage(res.data.message || 'Login successful via OTP');
+      setMessage(res.data.message || 'OTP verified successfully');
+      // ✅ REDIRECT TO RESET PASSWORD PAGE
       setTimeout(() => {
-        router.push('/admin/dashboard');
-      }, 1500);
+        router.push(`/admin/reset-password?email=${email}`);
+      }, 1200);
     } catch (err) {
       setMessage(err.response?.data?.error || 'OTP verification failed');
       setIsLoading(false);

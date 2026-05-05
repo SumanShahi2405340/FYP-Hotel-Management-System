@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api from '../utils/api';
+import axios from 'axios';
 
 export default function AdminForgotPasswordForm() {
   const [email, setEmail] = useState('');
@@ -10,14 +10,20 @@ export default function AdminForgotPasswordForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
+  const api = axios.create({
+    baseURL: 'http://127.0.0.1:8000/api/',
+    withCredentials: true,
+  });
+
   const requestOTP = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     try {
       console.log('Sending OTP to:', email);
-      const res = await api.post('/api/forgot-password/', { email });
+      const cleanEmail = email.trim().toLowerCase();
+      const res = await api.post('forgot-password/', { email: cleanEmail });
       setMessage(res.data.message || 'OTP sent to email');
-      router.push(`/admin/verify-otp?email=${email}`);
+      router.push(`/admin/verify-otp?email=${encodeURIComponent(email.trim().toLowerCase())}`);
     } catch (err) {
       setMessage(err.response?.data?.error || 'Failed to send OTP');
     } finally {
