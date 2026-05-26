@@ -8,9 +8,7 @@ import {
 export default function NotificationSetting({ showMenu }) {
   const [muteStatus, setMuteStatus] = useState('Active');
 
-  // ✅ FIX: Query params from Next.js router are always STRINGS.
-  // "false" is a non-empty string → truthy → sidebar wrongly opens.
-  // We must explicitly compare to the string "true".
+
   const [sidebarOpen, setSidebarOpen] = useState(showMenu === true || showMenu === 'true');
 
   const [activeFilter, setActiveFilter] = useState('all');
@@ -306,7 +304,7 @@ export default function NotificationSetting({ showMenu }) {
                   { key: 'all',           label: 'All',                    icon: <FaBell className="text-gold" /> },
                   { key: 'important',     label: 'Important',              icon: <FaStar className="text-yellow-400" /> },
                   { key: 'announcements', label: 'Announcements',          icon: <FaBullhorn className="text-purple-400" /> },
-                  { key: 'promotions',    label: 'Promotions & Discounts', icon: <FaTags className="text-green-400" /> },
+                  { key: 'promotions',    label: 'Offers & Discount', icon: <FaTags className="text-green-400" /> },
                 ].map(({ key, label, icon }) => (
                   <button
                     key={key}
@@ -366,9 +364,9 @@ export default function NotificationSetting({ showMenu }) {
               <div className="mb-8">
                 <h1 className="font-serif text-4xl md:text-5xl font-light text-ivory">
                   {activeFilter === 'all'           && 'All Notifications'}
-                  {activeFilter === 'important'     && 'Important Items'}
-                  {activeFilter === 'announcements' && 'Owner Announcements'}
-                  {activeFilter === 'promotions'    && 'Promotions & Discounts'}
+                  {activeFilter === 'important'     && 'Important Notifications'}
+                  {activeFilter === 'announcements' && 'Announcements'}
+                  {activeFilter === 'promotions'    && 'Offers & Discounts'}
                 </h1>
                 <div className="gold-divider w-24 mt-2" />
                 <div className="mt-3 text-sm text-ivory-60 flex items-center gap-2">

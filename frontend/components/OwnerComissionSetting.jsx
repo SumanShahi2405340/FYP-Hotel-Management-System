@@ -6,6 +6,32 @@ import {
   FaClock, FaCoins, FaCalendarAlt, FaArrowUp, FaArrowDown
 } from "react-icons/fa";
 
+const parseMoneyAmount = (value) => {
+  if (value === null || value === undefined) return 0;
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  const cleaned = String(value)
+    .replace(/NPR/gi, "")
+    .replace(/Rs\.?/gi, "")
+    .replace(/,/g, "")
+    .replace(/[^\d.-]/g, "")
+    .trim();
+
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatNPR = (value) => {
+  const amount = parseMoneyAmount(value);
+  return `Rs ${amount.toLocaleString("en-NP", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
 const OwnerCommissionSetting = () => {
   const [showSend, setShowSend] = useState(false);
   const [commissions, setCommissions] = useState([]);
@@ -34,15 +60,19 @@ const OwnerCommissionSetting = () => {
         });
         
         // Transform revenue data to commission format
-        const transformedData = Array.isArray(res.data) ? res.data.map(item => ({
-          id: item.payment_id,
-          date: `${selectedYear}-${paddedMonth}-01`,
-          time: new Date().toLocaleTimeString(),
-          rate: item.amount,
-          status: item.status || "Pending",
-          hotel_name: item.hotel_name,
-          hotel_id: item.payment_id
-        })) : [];
+        const transformedData = Array.isArray(res.data) ? res.data.map(item => {
+          const amount = parseMoneyAmount(item.amount);
+          return {
+            id: item.payment_id,
+            date: item.start_due_date || `${selectedYear}-${paddedMonth}-01`,
+            time: new Date().toLocaleTimeString(),
+            rate: amount,
+            display_amount: formatNPR(amount),
+            status: item.status || "Pending",
+            hotel_name: item.hotel_name,
+            hotel_id: item.hotel_id || item.payment_id
+          };
+        }) : [];
         
         setCommissions(transformedData);
       } catch (err) {
@@ -57,11 +87,11 @@ const OwnerCommissionSetting = () => {
 
   const totalPaid = commissions
     .filter(c => c.status === "Paid")
-    .reduce((sum, c) => sum + Number(c.rate || 0), 0);
+    .reduce((sum, c) => sum + parseMoneyAmount(c.rate), 0);
 
   const totalPending = commissions
     .filter(c => c.status === "Pending")
-    .reduce((sum, c) => sum + Number(c.rate || 0), 0);
+    .reduce((sum, c) => sum + parseMoneyAmount(c.rate), 0);
 
   // Month and Year selectors
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -464,12 +494,12 @@ const OwnerCommissionSetting = () => {
             </div>
             <div className="ocs-card">
               <div className="ocs-card-icon icon-green"><FaCheckCircle /></div>
-              <div className="ocs-card-value">Rs {totalPaid.toLocaleString()}</div>
+              <div className="ocs-card-value">{formatNPR(totalPaid)}</div>
               <div className="ocs-card-label">Total Paid</div>
             </div>
             <div className="ocs-card">
               <div className="ocs-card-icon icon-amber"><FaClock /></div>
-              <div className="ocs-card-value">Rs {totalPending.toLocaleString()}</div>
+              <div className="ocs-card-value">{formatNPR(totalPending)}</div>
               <div className="ocs-card-label">Pending</div>
             </div>
             <div className="ocs-card">
@@ -552,7 +582,7 @@ const OwnerCommissionSetting = () => {
                           </div>
                         </td>
                         <td>
-                          <span style={{ color: "#f1f5f9", fontWeight: 600 }}>Rs {Number(c.rate).toLocaleString()}</span>
+                          <span style={{ color: "#f1f5f9", fontWeight: 600 }}>{formatNPR(c.rate)}</span>
                         </td>
                         <td>
                           <span className={`status-pill ${c.status === "Paid" ? "status-paid" : "status-pending"}`}>
@@ -575,3 +605,4 @@ const OwnerCommissionSetting = () => {
 };
 
 export default OwnerCommissionSetting;
+

@@ -1,10 +1,10 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   FaCog, FaWrench, FaChartLine, FaBed,
   FaCalendarCheck, FaSignOutAlt, FaChevronDown, FaHotel, FaBuilding, FaTachometerAlt,
   FaUserPlus, FaList, FaUsers, FaUserCircle, FaBell, FaBook, FaPlus, FaUserFriends,
-  FaDoorOpen, FaClipboardList, FaCheckCircle, FaSpinner, FaMoneyBillWave, FaTags
+  FaDoorOpen, FaClipboardList, FaCheckCircle, FaSpinner, FaMoneyBillWave, FaTags, FaSun, FaMoon
 } from "react-icons/fa";
 import { useRouter } from "next/navigation";
 import recepApi from "@/utils/recep";
@@ -12,6 +12,12 @@ import api from "@/utils/api";
 import ManagePaymentsDashboard from "@/components/ManagePaymentsDashboard";
 import EarningReports from "@/components/EarningReports";
 import RoomStatusPanel from "@/components/RoomStatusPanel";
+
+const API_BASE_URL = "http://localhost:8000";
+const RECEPTIONIST_NOTIFICATION_SEEN_IDS_KEY = "cloudinn_receptionist_seen_notification_ids";
+const RECEPTIONIST_SOUND_STATUS_KEY = "receptionist_notification_sound_status";
+const RECEPTIONIST_MUTE_UNTIL_KEY = "receptionist_notification_mute_until";
+const RECEPTIONIST_THEME_KEY = "cloudinn_receptionist_dashboard_theme";
 
 const ReceptionistDashboard = () => {
   const [activePanel, setActivePanel] = useState(null);
@@ -29,7 +35,29 @@ const ReceptionistDashboard = () => {
     todayCheckOuts: 0,
   });
   const [statsLoading, setStatsLoading] = useState(true);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [newNotificationPopup, setNewNotificationPopup] = useState(null);
+  const [themeMode, setThemeMode] = useState("dark");
+
+  const notificationAudioRef = useRef(null);
+  const previousUnseenIdsRef = useRef(new Set());
+  const currentNotificationIdsRef = useRef([]);
+  const soundUnlockedRef = useRef(false);
+
   const router = useRouter();
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem(RECEPTIONIST_THEME_KEY) || "dark";
+    setThemeMode(savedTheme);
+    document.documentElement.setAttribute("data-receptionist-theme", savedTheme);
+  }, []);
+
+  const toggleThemeMode = () => {
+    const nextTheme = themeMode === "dark" ? "light" : "dark";
+    setThemeMode(nextTheme);
+    localStorage.setItem(RECEPTIONIST_THEME_KEY, nextTheme);
+    document.documentElement.setAttribute("data-receptionist-theme", nextTheme);
+  };
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "";
@@ -143,6 +171,260 @@ const ReceptionistDashboard = () => {
     fetchDashboardData();
   }, []);
 
+  const getStoredAccessToken = () => {
+    if (typeof window === "undefined") return null;
+
+    return (
+      localStorage.getItem("recepToken") ||
+      localStorage.getItem("authToken") ||
+      localStorage.getItem("access") ||
+      localStorage.getItem("access_token") ||
+      localStorage.getItem("token")
+    );
+  };
+
+  const getAuthHeaders = () => {
+    const token = getStoredAccessToken();
+
+    const headers = {
+      "Content-Type": "application/json",
+    };
+
+    if (token) {
+      headers.Authorization = "Bearer " + token;
+    }
+
+    return headers;
+  };
+
+  const getSeenNotificationIds = () => {
+    if (typeof window === "undefined") return new Set();
+
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem(RECEPTIONIST_NOTIFICATION_SEEN_IDS_KEY) || "[]"
+      );
+
+      return new Set(Array.isArray(saved) ? saved : []);
+    } catch {
+      return new Set();
+    }
+  };
+
+  const saveSeenNotificationIds = (ids) => {
+    if (typeof window === "undefined") return;
+
+    localStorage.setItem(
+      RECEPTIONIST_NOTIFICATION_SEEN_IDS_KEY,
+      JSON.stringify([...new Set(ids)])
+    );
+  };
+
+  const isSoundMuted = () => {
+    if (typeof window === "undefined") return false;
+
+    const status =
+      localStorage.getItem(RECEPTIONIST_SOUND_STATUS_KEY) || "Active";
+
+    const muteUntil = Number(
+      localStorage.getItem(RECEPTIONIST_MUTE_UNTIL_KEY) || 0
+    );
+
+    if (status === "Muted until unmuted") return true;
+
+    if (status === "Muted for 1 hour") {
+      if (muteUntil && Date.now() < muteUntil) return true;
+
+      localStorage.setItem(RECEPTIONIST_SOUND_STATUS_KEY, "Active");
+      localStorage.removeItem(RECEPTIONIST_MUTE_UNTIL_KEY);
+    }
+
+    return false;
+  };
+
+  const playFallbackBeep = () => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+
+      const audioContext = new AudioContext();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.value = 880;
+      gainNode.gain.value = 0.12;
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start();
+
+      setTimeout(() => {
+        oscillator.stop();
+        audioContext.close();
+      }, 250);
+    } catch (err) {
+      console.log("Fallback beep blocked:", err);
+    }
+  };
+
+  const playNotificationSound = () => {
+    if (isSoundMuted()) return;
+
+    if (notificationAudioRef.current) {
+      notificationAudioRef.current.currentTime = 0;
+
+      notificationAudioRef.current.play().catch(() => {
+        playFallbackBeep();
+      });
+    } else {
+      playFallbackBeep();
+    }
+  };
+
+  const unlockSound = () => {
+    if (soundUnlockedRef.current) return;
+
+    soundUnlockedRef.current = true;
+
+    if (!notificationAudioRef.current) {
+      notificationAudioRef.current = new Audio("/sounds/notification.mp3");
+      notificationAudioRef.current.preload = "auto";
+    }
+
+    notificationAudioRef.current
+      .play()
+      .then(() => {
+        notificationAudioRef.current.pause();
+        notificationAudioRef.current.currentTime = 0;
+      })
+      .catch(() => {});
+  };
+
+  const normalizeReceptionistNotifications = (data) => {
+    const items = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.results)
+      ? data.results
+      : Array.isArray(data?.announcements)
+      ? data.announcements
+      : Array.isArray(data?.notifications)
+      ? data.notifications
+      : [];
+
+    return items
+      .filter((item) => item && item.id !== null && item.id !== undefined)
+      .map((item) => {
+        const timestamp =
+          item.timestamp ||
+          item.created_at ||
+          item.createdAt ||
+          item.date ||
+          new Date().toISOString();
+
+        return {
+          id: "receptionist_notification_" + item.id,
+          originalId: item.id,
+          message:
+            item.content ||
+            item.message ||
+            item.description ||
+            "New owner announcement",
+          hotelName:
+            item.hotel_name ||
+            item.owner_hotel_name ||
+            item.owner_name ||
+            item.hotel ||
+            hotel?.hotel_name ||
+            "CloudInn",
+          timestamp,
+        };
+      })
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  };
+
+  const fetchReceptionistNotifications = async ({ playSoundForNew = true } = {}) => {
+    try {
+      const response = await fetch(API_BASE_URL + "/api/recent-announcements/", {
+        method: "GET",
+        headers: getAuthHeaders(),
+      });
+
+      const data = await response.json().catch(() => []);
+
+      if (!response.ok) {
+        console.error("Receptionist notification fetch failed:", data);
+        return;
+      }
+
+      const notificationItems = normalizeReceptionistNotifications(data);
+
+      currentNotificationIdsRef.current = notificationItems.map((item) => item.id);
+
+      const seenIds = getSeenNotificationIds();
+      const unseenItems = notificationItems.filter((item) => !seenIds.has(item.id));
+      const unseenIds = new Set(unseenItems.map((item) => item.id));
+      const oldUnseenIds = previousUnseenIdsRef.current || new Set();
+
+      const hasNewId = [...unseenIds].some((id) => !oldUnseenIds.has(id));
+
+      setNotificationCount(unseenItems.length);
+
+      if (playSoundForNew && unseenItems.length > 0 && hasNewId) {
+        playNotificationSound();
+
+        setNewNotificationPopup(unseenItems[0]);
+
+        setTimeout(() => {
+          setNewNotificationPopup(null);
+        }, 5000);
+      }
+
+      previousUnseenIdsRef.current = unseenIds;
+    } catch (error) {
+      console.error("Receptionist dashboard notification error:", error);
+    }
+  };
+
+  const markReceptionistNotificationsAsSeen = () => {
+    saveSeenNotificationIds(currentNotificationIdsRef.current || []);
+
+    setNotificationCount(0);
+    previousUnseenIdsRef.current = new Set();
+    setNewNotificationPopup(null);
+  };
+
+
+  useEffect(() => {
+    notificationAudioRef.current = new Audio("/sounds/notification.mp3");
+    notificationAudioRef.current.preload = "auto";
+
+    const handleFirstUserClick = () => unlockSound();
+
+    window.addEventListener("click", handleFirstUserClick, { once: true });
+    window.addEventListener("keydown", handleFirstUserClick, { once: true });
+
+    fetchReceptionistNotifications({ playSoundForNew: false });
+
+    const interval = setInterval(() => {
+      fetchReceptionistNotifications({ playSoundForNew: true });
+    }, 3000);
+
+    const handleFocus = () => {
+      fetchReceptionistNotifications({ playSoundForNew: true });
+    };
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("click", handleFirstUserClick);
+      window.removeEventListener("keydown", handleFirstUserClick);
+    };
+  }, [hotel?.hotel_name]);
+
+
   const handleLogout = () => {
     localStorage.removeItem("recepToken");
     localStorage.removeItem("recepRefreshToken");
@@ -153,6 +435,8 @@ const ReceptionistDashboard = () => {
 
   // Bell icon → sidebar CLOSED (showMenu=false)
   const handleNotificationFromBell = () => {
+    unlockSound();
+    markReceptionistNotificationsAsSeen();
     router.push("/receptionist/receptionist-notification-setting?showMenu=false");
   };
 
@@ -199,7 +483,37 @@ const ReceptionistDashboard = () => {
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; }
+        :root[data-receptionist-theme='dark'] {
+          --receptionist-page-bg: linear-gradient(135deg, #111827 0%, #1f2937 50%, #111827 100%);
+          --receptionist-card-bg: rgba(255, 255, 255, 0.05);
+          --receptionist-border: rgba(255, 255, 255, 0.10);
+          --receptionist-text: #ffffff;
+          --receptionist-muted: #9ca3af;
+          --receptionist-sidebar-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.95), rgba(31, 41, 55, 0.95), rgba(17, 24, 39, 0.95));
+          --receptionist-topbar-bg: linear-gradient(90deg, rgba(17, 24, 39, 0.95), rgba(31, 41, 55, 0.95));
+        }
+        :root[data-receptionist-theme='light'] {
+          --receptionist-page-bg: linear-gradient(135deg, #f8fafc 0%, #eef2ff 50%, #f8fafc 100%);
+          --receptionist-card-bg: rgba(255, 255, 255, 0.92);
+          --receptionist-border: rgba(148, 163, 184, 0.35);
+          --receptionist-text: #111827;
+          --receptionist-muted: #64748b;
+          --receptionist-sidebar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.96));
+          --receptionist-topbar-bg: linear-gradient(90deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.96));
+        }
+        body { font-family: 'Inter', sans-serif; background: var(--receptionist-page-bg); }
+        .receptionist-page-bg { background: var(--receptionist-page-bg) !important; }
+        .receptionist-sidebar-bg { background: var(--receptionist-sidebar-bg) !important; }
+        .receptionist-topbar-bg { background: var(--receptionist-topbar-bg) !important; }
+        .receptionist-card-bg { background: var(--receptionist-card-bg) !important; border-color: var(--receptionist-border) !important; }
+        :root[data-receptionist-theme='light'] .text-white { color: var(--receptionist-text) !important; }
+        :root[data-receptionist-theme='light'] .text-gray-300,
+        :root[data-receptionist-theme='light'] .text-gray-400,
+        :root[data-receptionist-theme='light'] .text-gray-500 { color: var(--receptionist-muted) !important; }
+        :root[data-receptionist-theme='light'] .bg-white\/5,
+        :root[data-receptionist-theme='light'] .bg-white\/10 { background-color: var(--receptionist-card-bg) !important; }
+        :root[data-receptionist-theme='light'] .border-white\/10,
+        :root[data-receptionist-theme='light'] .border-white\/20 { border-color: var(--receptionist-border) !important; }
         @keyframes fadeInUp {
           from { opacity: 0; transform: translateY(20px); }
           to   { opacity: 1; transform: translateY(0); }
@@ -208,23 +522,52 @@ const ReceptionistDashboard = () => {
           from { opacity: 0; transform: translateX(-20px); }
           to   { opacity: 1; transform: translateX(0); }
         }
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-16px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
         .animate-fadeInUp { animation: fadeInUp 0.5s ease forwards; }
         .animate-slideIn  { animation: slideIn  0.3s ease forwards; }
+        .animate-slideDown { animation: slideDown 0.35s ease forwards; }
         .hover-scale { transition: transform 0.2s ease, box-shadow 0.2s ease; }
         .hover-scale:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2); }
       `}</style>
 
-      <div className="min-h-screen flex bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+      <div className="min-h-screen flex receptionist-page-bg">
+
+        {newNotificationPopup && (
+          <div className="fixed top-6 right-6 z-[9999] w-80 rounded-2xl bg-gray-900/95 border border-purple-500/40 shadow-2xl p-4 animate-slideDown">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
+                <FaBell className="text-purple-400" />
+              </div>
+
+              <div className="flex-1">
+                <p className="text-white font-semibold text-sm">New owner announcement</p>
+                <p className="text-purple-300 text-xs mt-1">From: {newNotificationPopup.hotelName}</p>
+                <p className="text-gray-300 text-sm mt-2 line-clamp-2">{newNotificationPopup.message}</p>
+              </div>
+
+              <button
+                onClick={() => setNewNotificationPopup(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
 
         {/* Sidebar */}
-        <div className={`fixed top-0 left-0 h-screen w-80 bg-gradient-to-b from-gray-900/95 via-gray-800/95 to-gray-900/95 backdrop-blur-xl text-white flex flex-col z-20 transform transition-all duration-300 shadow-2xl border-r border-white/10 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className={`fixed top-0 left-0 h-screen w-80 receptionist-sidebar-bg backdrop-blur-xl text-white flex flex-col z-20 transform transition-all duration-300 shadow-2xl border-r border-white/10 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
 
           {/* Hotel profile */}
           <div className="relative px-6 py-8 border-b border-white/10">
             <div className="flex flex-col items-center">
               <div
                 className="relative group cursor-pointer"
-                onClick={() => hotel && router.push(`/owner/hotel-profile/${hotel.hotel_id}`)}
+                onClick={() => hotel && router.push(`/receptionist/hotel-profile/${hotel.hotel_id}`)}
               >
                 <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500 p-0.5">
                   <div className="w-full h-full rounded-2xl overflow-hidden bg-gray-800">
@@ -374,13 +717,7 @@ const ReceptionistDashboard = () => {
                     onClick={handleNotificationFromSettings}
                     className="w-full text-left px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition flex items-center gap-2"
                   >
-                    <FaBell className="text-xs" /> Notifications & Setting
-                  </button>
-                  <button
-                    onClick={handleViewPromotions}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition flex items-center gap-2"
-                  >
-                    <FaTags className="text-xs" /> View Promotion/Discount in N&S
+                    <FaBell className="text-xs" /> Notifications & Settings
                   </button>
                 </div>
               )}
@@ -403,7 +740,7 @@ const ReceptionistDashboard = () => {
         <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? "ml-80" : "ml-0"} min-h-screen`}>
 
           {/* Header */}
-          <div className="sticky top-0 z-10 bg-gradient-to-r from-gray-900/95 to-gray-800/95 backdrop-blur-xl border-b border-white/10 px-8 py-4">
+          <div className="sticky top-0 z-10 receptionist-topbar-bg backdrop-blur-xl border-b border-white/10 px-8 py-4">
             <div className="flex items-center justify-between">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -416,13 +753,29 @@ const ReceptionistDashboard = () => {
               </button>
 
               <div className="flex items-center gap-4">
+                <button
+                  onClick={toggleThemeMode}
+                  className="relative p-2 rounded-full bg-white/10 hover:bg-white/20 transition-all duration-200 group receptionist-card-bg"
+                  title={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {themeMode === "dark" ? (
+                    <FaSun className="text-xl text-yellow-400 group-hover:scale-110 transition-transform" />
+                  ) : (
+                    <FaMoon className="text-xl text-purple-500 group-hover:scale-110 transition-transform" />
+                  )}
+                </button>
+
                 {/* ✅ Bell icon → showMenu=false → sidebar CLOSED */}
                 <button
                   onClick={handleNotificationFromBell}
                   className="relative p-2 rounded-full bg-white/10 hover:bg-white/20 transition-all duration-200 group"
                 >
                   <FaBell className="text-xl text-purple-400 group-hover:scale-110 transition-transform" />
-                  <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  {notificationCount > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 bg-red-600 text-white text-[11px] font-bold rounded-full flex items-center justify-center animate-pulse border border-white shadow-lg">
+                      {notificationCount > 99 ? "99+" : notificationCount}
+                    </span>
+                  )}
                 </button>
                 <div className="h-8 w-px bg-white/20" />
                 <div className="flex items-center gap-2">

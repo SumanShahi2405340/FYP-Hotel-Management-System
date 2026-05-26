@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { FaMoneyCheckAlt, FaBookOpen, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
+import { FaMoneyCheckAlt, FaBookOpen, FaEdit, FaSave, FaTimes, FaChartLine, FaCheckCircle, FaClock, FaCoins, FaCalendarAlt } from 'react-icons/fa';
 
 export default function CommissionSetting() {
   const [showPaymentTable, setShowPaymentTable] = useState(false);
@@ -8,9 +8,82 @@ export default function CommissionSetting() {
   const [isEditing, setIsEditing] = useState(false);
   const [rules, setRules] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [showHistoryTable, setShowHistoryTable] = useState(false);
+  const [commissions, setCommissions] = useState([]);
+  const [loadingCommissions, setLoadingCommissions] = useState(false);
 
   const [selectedMonth, setSelectedMonth] = useState('Dec');
   const [selectedYear, setSelectedYear] = useState('2025');
+
+  const getMoneyValue = (item) => {
+    const raw =
+      item?.amount ??
+      item?.rate ??
+      item?.commission_amount ??
+      item?.commission ??
+      item?.total_amount ??
+      item?.payment_amount ??
+      0;
+
+    if (typeof raw === 'number') return raw;
+
+    const cleaned = String(raw)
+      .replace(/Rs\.?/gi, '')
+      .replace(/NPR/gi, '')
+      .replace(/,/g, '')
+      .trim();
+
+    const parsed = Number(cleaned);
+
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const formatMoney = (value) => {
+    const amount = Number(value);
+
+    if (!Number.isFinite(amount)) {
+      return 'Rs 0';
+    }
+
+    return 'Rs ' + amount.toLocaleString();
+  };
+
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('authToken') || localStorage.getItem('access') || localStorage.getItem('token');
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = 'Bearer ' + token;
+    return headers;
+  };
+
+  const fetchCommissionHistory = async () => {
+    setLoadingCommissions(true);
+    try {
+      const monthNumber = new Date(`${selectedMonth} 1, ${selectedYear}`).getMonth() + 1;
+      const paddedMonth = monthNumber.toString().padStart(2, '0');
+      const res = await fetch(
+        `http://localhost:8000/api/commission-revenue/?month=${paddedMonth}&year=${selectedYear}`,
+        { method: 'GET', headers: getAuthHeaders() }
+      );
+      const data = await res.json();
+      const formatted = Array.isArray(data)
+        ? data.map((item) => ({
+            id: item.payment_id || item.id,
+            hotel_id: item.hotel_id || item.payment_id || item.id,
+            hotel_name: item.hotel_name || 'N/A',
+            date: `${selectedYear}-${paddedMonth}-01`,
+            amount: getMoneyValue(item),
+            status: item.status || 'Pending',
+          }))
+        : [];
+      setCommissions(formatted);
+    } catch (err) {
+      console.error('Error fetching commission history:', err);
+      setCommissions([]);
+    } finally {
+      setLoadingCommissions(false);
+    }
+  };
 
   const defaultRules = [
     {
@@ -55,6 +128,18 @@ export default function CommissionSetting() {
     };
     fetchPayments();
   }, [selectedMonth, selectedYear]);
+
+  useEffect(() => {
+    if (showHistoryTable) fetchCommissionHistory();
+  }, [selectedMonth, selectedYear, showHistoryTable]);
+
+  const totalPaid = commissions
+    .filter(c => c.status === 'Paid')
+    .reduce((sum, c) => sum + getMoneyValue(c), 0);
+
+  const totalPending = commissions
+    .filter(c => c.status === 'Pending')
+    .reduce((sum, c) => sum + getMoneyValue(c), 0);
 
   // Confirm all payments
   const handleConfirmPayments = async () => {
@@ -145,10 +230,21 @@ export default function CommissionSetting() {
   const handleTrackPayment = () => {
     setShowPaymentTable(!showPaymentTable);
     setShowRulesTable(false);
+    setShowHistoryTable(false);
   };
+
+  const handleViewHistory = () => {
+    const nextState = !showHistoryTable;
+    setShowHistoryTable(nextState);
+    setShowPaymentTable(false);
+    setShowRulesTable(false);
+    if (nextState) fetchCommissionHistory();
+  };
+
   const handleViewRules = () => {
     setShowRulesTable(!showRulesTable);
     setShowPaymentTable(false);
+    setShowHistoryTable(false);
   };
 
   return (
@@ -222,6 +318,24 @@ export default function CommissionSetting() {
           to { opacity: 1; transform: translateY(0); }
         }
         .fade-up { animation: fadeUp 0.5s ease forwards; }
+
+        .history-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-bottom: 28px; }
+        .history-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 22px 24px; backdrop-filter: blur(12px); transition: transform 0.2s ease, border-color 0.2s ease; }
+        .history-card:hover { transform: translateY(-2px); border-color: rgba(201,168,76,0.45); }
+        .history-card-icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; margin-bottom: 12px; }
+        .icon-purple { background: rgba(139,92,246,0.22); color: #c4b5fd; }
+        .icon-green { background: rgba(16,185,129,0.20); color: #34d399; }
+        .icon-amber { background: rgba(245,158,11,0.20); color: #fbbf24; }
+        .icon-blue { background: rgba(59,130,246,0.20); color: #60a5fa; }
+        .history-card-value { font-family: 'Cormorant Garamond', serif; font-size: 1.7rem; font-weight: 600; color: #fff; margin-bottom: 4px; }
+        .history-card-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+        .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+        .status-paid { background: rgba(16,185,129,0.15); color: #34d399; }
+        .status-pending { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .history-empty { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+        .history-spinner { display: flex; justify-content: center; padding: 40px; }
+        .spinner { width: 32px; height: 32px; border: 3px solid rgba(201,168,76,0.25); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.7s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
       <div className="relative min-h-screen bg-black overflow-hidden">
@@ -249,7 +363,7 @@ export default function CommissionSetting() {
               <div className="gold-divider w-24 mx-auto" />
             </div>
 
-            {/* Action Buttons — only 2 now */}
+            {/* Action Buttons */}
             <div className="flex flex-wrap justify-center gap-5 mb-16 fade-up" style={{ animationDelay: '0.1s', opacity: 0 }}>
               <button
                 onClick={handleTrackPayment}
@@ -259,6 +373,16 @@ export default function CommissionSetting() {
                 <FaMoneyCheckAlt size={18} />
                 <span className="font-semibold">Confirm Commission Payments</span>
               </button>
+
+              <button
+                onClick={handleViewHistory}
+                className="flex items-center gap-3 px-6 py-3 rounded-full text-white transition-all shadow-lg hover:scale-105"
+                style={{ background: showHistoryTable ? '#2563EB' : 'rgba(37,99,235,0.78)' }}
+              >
+                <FaChartLine size={18} />
+                <span className="font-semibold">View Commission History</span>
+              </button>
+
               <button
                 onClick={handleViewRules}
                 className="flex items-center gap-3 px-6 py-3 rounded-full text-white transition-all shadow-lg hover:scale-105"
@@ -300,7 +424,7 @@ export default function CommissionSetting() {
                         <tr key={payment.id}>
                           <td>{payment.id}</td>
                           <td>{payment.hotel}</td>
-                          <td><span style={{ color: 'var(--gold-light)' }}>NPR {payment.amount}</span></td>
+                          <td><span style={{ color: 'var(--gold-light)' }}>{formatMoney(getMoneyValue(payment))}</span></td>
                           <td>
                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                               payment.status === 'Paid' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
@@ -347,6 +471,65 @@ export default function CommissionSetting() {
                     </tfoot>
                   </table>
                 </div>
+              </div>
+            )}
+
+
+            {/* Commission History */}
+            {showHistoryTable && (
+              <div className="lux-card rounded-2xl p-6 mb-8 fade-up" style={{ animationDelay: '0.2s', opacity: 0 }}>
+                <div className="flex flex-wrap justify-between items-center mb-6">
+                  <h2 className="serif text-2xl font-light text-white">Commission History</h2>
+                  <div className="flex gap-3">
+                    <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="select-lux">
+                      {Array.from({ length: 10 }, (_, i) => 2025 + i).map(y => <option key={y}>{y}</option>)}
+                    </select>
+                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="select-lux">
+                      {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(m => <option key={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="history-summary">
+                  <div className="history-card"><div className="history-card-icon icon-purple"><FaCoins /></div><div className="history-card-value">{commissions.length}</div><div className="history-card-label">Total Records</div></div>
+                  <div className="history-card"><div className="history-card-icon icon-green"><FaCheckCircle /></div><div className="history-card-value">{formatMoney(totalPaid)}</div><div className="history-card-label">Total Paid</div></div>
+                  <div className="history-card"><div className="history-card-icon icon-amber"><FaClock /></div><div className="history-card-value">{formatMoney(totalPending)}</div><div className="history-card-label">Pending</div></div>
+                  <div className="history-card"><div className="history-card-icon icon-blue"><FaChartLine /></div><div className="history-card-value">{commissions.filter(c => c.status === 'Paid').length}</div><div className="history-card-label">Paid Entries</div></div>
+                </div>
+
+                {loadingCommissions ? (
+                  <div className="history-spinner"><div className="spinner" /></div>
+                ) : commissions.length === 0 ? (
+                  <div className="history-empty">
+                    <FaChartLine style={{ fontSize: '2.5rem', marginBottom: '12px', display: 'block', margin: '0 auto 12px' }} />
+                    <p>No commission records found for {selectedMonth} {selectedYear}.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="lux-table w-full">
+                      <thead>
+                        <tr>
+                          <th>Hotel ID</th>
+                          <th>Hotel Name</th>
+                          <th>Date</th>
+                          <th>Commission Amount</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {commissions.map((c) => (
+                          <tr key={c.id}>
+                            <td>{c.hotel_id || c.id}</td>
+                            <td><span style={{ color: 'var(--gold-light)', fontWeight: 500 }}>{c.hotel_name || 'N/A'}</span></td>
+                            <td><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FaCalendarAlt style={{ color: 'var(--gold)', fontSize: '0.8rem' }} />{c.date}</div></td>
+                            <td><span style={{ color: '#fff', fontWeight: 600 }}>{formatMoney(getMoneyValue(c))}</span></td>
+                            <td><span className={`status-pill ${c.status === 'Paid' ? 'status-paid' : 'status-pending'}`}>{c.status === 'Paid' ? <FaCheckCircle /> : <FaClock />}{c.status}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 

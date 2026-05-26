@@ -45,11 +45,11 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
     }
   };
 
-  // Fetch recent announcements when panel opens
+  // Fetch recent announcements sent by OWNER only when panel opens
   const fetchAnnouncements = async () => {
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch("http://localhost:8000/api/owner-recent-announcements/", {
+      const response = await fetch("http://localhost:8000/api/owner-recent-announcements/?scope=sent", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -60,15 +60,24 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
       if (response.ok) {
         const data = await response.json();
         const items = Array.isArray(data) ? data : [];
-        setAnnouncements(items);
+
+        // Keep owner announcements only. If your backend does not send sender_type,
+        // the owner-recent-announcements endpoint is still trusted as owner-only.
+        const ownerOnlyItems = items.filter((item) => {
+          const senderType = String(item.sender_type || item.sender || item.from || '').toLowerCase();
+          if (!senderType) return true;
+          return senderType.includes('owner') || senderType.includes('hotel');
+        });
+
+        setAnnouncements(ownerOnlyItems);
       } else {
         const errorData = await response.json();
         console.error("Failed to fetch announcements:", errorData);
-        setError(errorData.error || "Failed to load announcements");
+        setError(errorData.error || "Failed to load owner announcements");
       }
     } catch (err) {
-      console.error("Error fetching announcements:", err);
-      setError("Network error while loading announcements");
+      console.error("Error fetching owner announcements:", err);
+      setError("Network error while loading owner announcements");
     }
   };
 
@@ -269,7 +278,7 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
             </div>
             <div>
               <h2 className="text-xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">
-                Admin Center
+                Owner Announcement Center
               </h2>
               <p className="text-xs text-gray-400 mt-0.5">Manage announcements & promotions</p>
             </div>
@@ -325,7 +334,7 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
             }`}
           >
             <FaTags className="text-sm" />
-            Promotions & Discounts
+            Offers & Discounts
           </button>
         </div>
 
@@ -415,7 +424,7 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
               <div className="flex items-center gap-2 mb-3 pb-2 border-b border-white/10">
                 <FaHistory className="text-purple-400 text-sm" />
                 <h3 className="text-sm font-semibold text-gray-300">
-                  Recent Announcements
+                  Owner Recent Announcements
                 </h3>
                 <span className="text-xs text-gray-500 ml-auto">
                   {announcements.length} total
@@ -428,7 +437,7 @@ export default function AnnouncementPanel({ isOpen, onClose }) {
                     <FaBell className="text-gray-500 text-xl" />
                   </div>
                   <p className="text-sm text-gray-500">No announcements yet</p>
-                  <p className="text-xs text-gray-600 mt-1">Your sent announcements will appear here</p>
+                  <p className="text-xs text-gray-600 mt-1">Your owner announcements will appear here</p>
                 </div>
               ) : (
                 <ul className="space-y-3">

@@ -7,10 +7,14 @@ import {
   FaHome, FaDollarSign, FaPlus, FaShareAlt, FaHeart, FaRegHeart, FaMapMarkerAlt, FaPhoneAlt, FaPhone, FaEnvelope,
   FaExclamationTriangle, FaExclamationCircle, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTag, FaWifi, FaTv, FaCoffee,
   FaSnowflake, FaShower, FaBed, FaParking, FaConciergeBell, FaUtensils, FaDumbbell, FaSwimmingPool, FaClock, FaRobot,
-  FaTimes, FaGripVertical, FaPaperPlane, FaLightbulb, FaSpinner, FaCheckCircle, FaDoorOpen
+  FaTimes, FaGripVertical, FaPaperPlane, FaLightbulb, FaSpinner, FaCheckCircle, FaDoorOpen, FaCog, FaVolumeMute, FaVolumeUp
 } from 'react-icons/fa';
 import FilterHotels from '@/components/FilterHotels';
 import guestApi from '../utils/guestApi';
+
+const API_BASE_URL = 'http://localhost:8000';
+const GUEST_OFFER_SEEN_IDS_KEY = 'cloudinn_guest_seen_offer_notification_ids';
+const DEFAULT_GUEST_PROFILE_IMAGE = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80';
 
 const FALLBACK_IMGS = [
   'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&q=80',
@@ -1032,11 +1036,332 @@ const WeekendDealsCarousel = ({ onBook, favHotels, toggleFav, onViewDeal }) => {
   );
 };
 
+
+function GuestOffersDiscountPage() {
+  const [offers, setOffers] = useState([]);
+  const [loadingOffers, setLoadingOffers] = useState(true);
+  const [error, setError] = useState('');
+
+  const getHeaders = () => {
+    const token =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('guest_access_token') ||
+          localStorage.getItem('authToken') ||
+          localStorage.getItem('access') ||
+          localStorage.getItem('token')
+        : null;
+
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers.Authorization = 'Bearer ' + token;
+    }
+
+    return headers;
+  };
+
+  const formatDate = (value) => {
+    if (!value) return 'Not set';
+    return new Date(value).toLocaleDateString();
+  };
+
+  useEffect(() => {
+    const fetchOffers = async () => {
+      setLoadingOffers(true);
+      setError('');
+
+      try {
+        const response = await fetch('http://localhost:8000/api/promotions/', {
+          method: 'GET',
+          headers: getHeaders(),
+        });
+
+        if (!response.ok) throw new Error('Failed to load offers and discounts');
+
+        const data = await response.json().catch(() => []);
+        const items = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.results)
+          ? data.results
+          : [];
+
+        const activeOffers = items.filter((item) => {
+          const status = String(item.status || '').toLowerCase();
+          return !status || status === 'active' || status === 'upcoming';
+        });
+
+        setOffers(activeOffers);
+      } catch (err) {
+        setError(err.message || 'Network error while loading offers');
+      } finally {
+        setLoadingOffers(false);
+      }
+    };
+
+    fetchOffers();
+  }, []);
+
+  return (
+    <div className="animate-fadeInUp">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+          <FaGift className="text-pink-400" /> Offers & Discounts
+        </h2>
+        <p className="text-gray-400 text-sm mt-1">Latest offers added from the Owner Announcement Panel.</p>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">
+          {error}
+        </div>
+      )}
+
+      {loadingOffers ? (
+        <div className="flex justify-center py-12">
+          <FaSpinner className="text-purple-400 text-3xl animate-spin" />
+        </div>
+      ) : offers.length === 0 ? (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
+          <FaGift className="mx-auto text-gray-500 text-4xl mb-3" />
+          <p className="text-gray-400">No active offers or discounts available right now.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {offers.map((offer) => (
+            <div key={offer.id} className="group relative overflow-hidden bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition-all duration-300">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-pink-500/10 to-orange-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="relative z-10">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center mb-4">
+                  <FaGift className="text-white text-xl" />
+                </div>
+                <h3 className="text-white font-bold text-lg mb-2">{offer.title || 'Special Offer'}</h3>
+                <p className="text-gray-300 text-sm leading-relaxed mb-4">
+                  {offer.description || offer.message || offer.content || 'Offer details will be shown here.'}
+                </p>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="px-2 py-1 rounded-full bg-green-500/20 text-green-400">{offer.status || 'Active'}</span>
+                  <span className="px-2 py-1 rounded-full bg-white/10 text-gray-400">From: {formatDate(offer.valid_from)}</span>
+                  <span className="px-2 py-1 rounded-full bg-white/10 text-gray-400">To: {formatDate(offer.valid_to)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GuestNotificationSetting() {
+  const [muteStatus, setMuteStatus] = useState('Active');
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [offers, setOffers] = useState([]);
+  const [starredIds, setStarredIds] = useState([]);
+  const [loadingOffers, setLoadingOffers] = useState(true);
+  const [error, setError] = useState('');
+
+  const SOUND_STATUS_KEY = 'guest_notification_sound_status';
+  const MUTE_UNTIL_KEY = 'guest_notification_mute_until';
+
+  const getHeaders = () => {
+    const token =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('guest_access_token') ||
+          localStorage.getItem('authToken') ||
+          localStorage.getItem('access') ||
+          localStorage.getItem('token')
+        : null;
+
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers.Authorization = 'Bearer ' + token;
+    }
+
+    return headers;
+  };
+
+  const syncMuteStatus = () => {
+    const storedStatus = localStorage.getItem(SOUND_STATUS_KEY) || 'Active';
+    const muteUntil = Number(localStorage.getItem(MUTE_UNTIL_KEY) || 0);
+
+    if (storedStatus === 'Muted for 1 hour' && muteUntil && Date.now() > muteUntil) {
+      localStorage.setItem(SOUND_STATUS_KEY, 'Active');
+      localStorage.removeItem(MUTE_UNTIL_KEY);
+      setMuteStatus('Active');
+      return;
+    }
+
+    setMuteStatus(storedStatus);
+  };
+
+  const fetchOffers = async () => {
+    setLoadingOffers(true);
+    setError('');
+
+    try {
+      const response = await fetch('http://localhost:8000/api/promotions/', {
+        method: 'GET',
+        headers: getHeaders(),
+      });
+
+      if (!response.ok) throw new Error('Failed to load guest notifications');
+
+      const data = await response.json().catch(() => []);
+      const items = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.results)
+        ? data.results
+        : [];
+
+      const activeOffers = items
+        .filter((item) => {
+          const status = String(item.status || '').toLowerCase();
+          return !status || status === 'active' || status === 'upcoming';
+        })
+        .map((item) => ({ ...item, isStarred: starredIds.includes(item.id) }));
+
+      setOffers(activeOffers);
+    } catch (err) {
+      setError(err.message || 'Network error while loading notifications');
+    } finally {
+      setLoadingOffers(false);
+    }
+  };
+
+  useEffect(() => {
+    syncMuteStatus();
+    fetchOffers();
+  }, []);
+
+  const handleMuteOneHour = () => {
+    localStorage.setItem(SOUND_STATUS_KEY, 'Muted for 1 hour');
+    localStorage.setItem(MUTE_UNTIL_KEY, String(Date.now() + 3600000));
+    setMuteStatus('Muted for 1 hour');
+  };
+
+  const handleMuteUntilUnmute = () => {
+    localStorage.setItem(SOUND_STATUS_KEY, 'Muted until unmuted');
+    localStorage.removeItem(MUTE_UNTIL_KEY);
+    setMuteStatus('Muted until unmuted');
+  };
+
+  const handleUnmute = () => {
+    localStorage.setItem(SOUND_STATUS_KEY, 'Active');
+    localStorage.removeItem(MUTE_UNTIL_KEY);
+    setMuteStatus('Active');
+  };
+
+  const toggleStar = (id) => {
+    setStarredIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setOffers((prev) => prev.map((item) => (item.id === id ? { ...item, isStarred: !item.isStarred } : item)));
+  };
+
+  const filteredItems = useMemo(() => {
+    if (activeFilter === 'important') return offers.filter((item) => item.isStarred);
+    return offers;
+  }, [activeFilter, offers]);
+
+  const formatDate = (value) => {
+    if (!value) return 'Not set';
+    return new Date(value).toLocaleDateString();
+  };
+
+  return (
+    <div className="animate-fadeInUp">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+          <FaBell className="text-purple-400" /> Guest Notifications
+        </h2>
+        <p className="text-gray-400 text-sm mt-1">Offers and discounts sent from the Owner Announcement Panel.</p>
+      </div>
+
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6">
+        <div className="flex flex-wrap gap-3 items-center">
+          <button onClick={() => setActiveFilter('all')} className={`px-4 py-2 rounded-xl text-sm ${activeFilter === 'all' ? 'bg-purple-500 text-white' : 'bg-white/10 text-gray-300 hover:bg-white/15'}`}>
+            All Offers
+          </button>
+          <button onClick={() => setActiveFilter('important')} className={`px-4 py-2 rounded-xl text-sm ${activeFilter === 'important' ? 'bg-yellow-500 text-white' : 'bg-white/10 text-gray-300 hover:bg-white/15'}`}>
+            Important
+          </button>
+          <span className={`px-3 py-2 rounded-xl text-xs ml-auto ${muteStatus === 'Active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+            Sound: {muteStatus}
+          </span>
+          <span className="px-3 py-2 rounded-xl text-xs bg-green-500/20 text-green-400 flex items-center gap-1">
+            <FaCheckCircle /> Seen
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6">
+        <h3 className="text-white font-semibold flex items-center gap-2 mb-3">
+          <FaCog className="text-purple-400" /> Sound Settings
+        </h3>
+        <div className="flex flex-wrap gap-3">
+          <button onClick={handleMuteOneHour} className="px-4 py-2 rounded-xl bg-white/10 text-gray-300 hover:bg-white/15 flex items-center gap-2">
+            <FaVolumeMute /> Mute for 1 Hour
+          </button>
+          <button onClick={handleMuteUntilUnmute} className="px-4 py-2 rounded-xl bg-white/10 text-gray-300 hover:bg-white/15 flex items-center gap-2">
+            <FaVolumeMute /> Mute Until Unmute
+          </button>
+          <button onClick={handleUnmute} className="px-4 py-2 rounded-xl bg-green-500/20 text-green-400 hover:bg-green-500/30 flex items-center gap-2">
+            <FaVolumeUp /> Unmute
+          </button>
+        </div>
+      </div>
+
+      {error && <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">{error}</div>}
+
+      {loadingOffers ? (
+        <div className="flex justify-center py-12">
+          <FaSpinner className="text-purple-400 text-3xl animate-spin" />
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center">
+          <FaBell className="mx-auto text-gray-500 text-3xl mb-3" />
+          <p className="text-gray-400">No offers or discount notifications available.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredItems.map((item) => (
+            <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                  <FaGift className="text-purple-400" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-white font-semibold">{item.title || 'Special Offer'}</h3>
+                    <button onClick={() => toggleStar(item.id)}>
+                      {item.isStarred ? <FaStar className="text-yellow-400 text-lg" /> : <FaRegStar className="text-gray-400 hover:text-yellow-400 text-lg" />}
+                    </button>
+                  </div>
+                  <p className="text-gray-300 text-sm mt-2">{item.description || item.message || item.content || 'Offer details will be shown here.'}</p>
+                  <div className="flex flex-wrap gap-2 mt-3 text-xs">
+                    <span className="px-2 py-1 rounded-full bg-green-500/20 text-green-400">{item.status || 'Active'}</span>
+                    <span className="px-2 py-1 rounded-full bg-white/10 text-gray-400">From: {formatDate(item.valid_from)}</span>
+                    <span className="px-2 py-1 rounded-full bg-white/10 text-gray-400">To: {formatDate(item.valid_to)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function GuestDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [bookingMenuOpen, setBookingMenuOpen] = useState(false);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [showBookingPopup, setShowBookingPopup] = useState(false);
   const [bookingPopupRooms, setBookingPopupRooms] = useState([]);
   const [hotelBookings, setHotelBookings] = useState([]);
@@ -1076,11 +1401,207 @@ export default function GuestDashboard() {
     name: '',
     email: '',
     phone: '',
+    profile_picture: '',
     preferences: { pillowType: 'Memory Foam', floorLevel: 'High' },
   });
 
   const [notifications, setNotifications] = useState([]);
   const [showToast, setShowToast] = useState(null);
+  const [newNotificationPopup, setNewNotificationPopup] = useState(null);
+
+  const [offersCount, setOffersCount] = useState(0);
+  const offersAudioRef = useRef(null);
+  const previousOffersCountRef = useRef(0);
+  const previousUnseenOfferIdsRef = useRef(new Set());
+  const currentOfferNotificationIdsRef = useRef([]);
+  const offersSoundUnlockedRef = useRef(false);
+
+  const getGuestAuthHeaders = () => {
+    const token =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('guest_access_token') ||
+          localStorage.getItem('authToken') ||
+          localStorage.getItem('access') ||
+          localStorage.getItem('token')
+        : null;
+
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers.Authorization = 'Bearer ' + token;
+    }
+
+    return headers;
+  };
+
+  const playOffersSound = () => {
+    if (!offersAudioRef.current) {
+      offersAudioRef.current = new Audio('/sounds/notification.mp3');
+      offersAudioRef.current.preload = 'auto';
+    }
+
+    offersAudioRef.current.currentTime = 0;
+
+    offersAudioRef.current.play().catch(() => {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+
+        const ctx = new AudioContext();
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.value = 900;
+        gainNode.gain.value = 0.14;
+
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+
+        setTimeout(() => {
+          oscillator.stop();
+          ctx.close();
+        }, 260);
+      } catch (error) {
+        console.log('Offer notification sound blocked until user interaction.');
+      }
+    });
+  };
+
+  const unlockOffersSound = () => {
+    if (offersSoundUnlockedRef.current) return;
+
+    offersSoundUnlockedRef.current = true;
+
+    if (!offersAudioRef.current) {
+      offersAudioRef.current = new Audio('/sounds/notification.mp3');
+      offersAudioRef.current.preload = 'auto';
+    }
+
+    offersAudioRef.current
+      .play()
+      .then(() => {
+        offersAudioRef.current.pause();
+        offersAudioRef.current.currentTime = 0;
+      })
+      .catch(() => {});
+  };
+
+  const getSeenOfferNotificationIds = () => {
+    if (typeof window === 'undefined') return new Set();
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(GUEST_OFFER_SEEN_IDS_KEY) || '[]');
+      return new Set(Array.isArray(saved) ? saved : []);
+    } catch {
+      return new Set();
+    }
+  };
+
+  const saveSeenOfferNotificationIds = (ids) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(GUEST_OFFER_SEEN_IDS_KEY, JSON.stringify([...new Set(ids)]));
+  };
+
+  const normalizeGuestOffers = (data) => {
+    const items = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.results)
+      ? data.results
+      : Array.isArray(data?.promotions)
+      ? data.promotions
+      : [];
+
+    return items
+      .filter((item) => {
+        const status = String(item.status || '').toLowerCase();
+        return !status || status === 'active' || status === 'upcoming';
+      })
+      .filter((item) => item && item.id !== null && item.id !== undefined)
+      .map((item) => {
+        const timestamp = item.created_at || item.createdAt || item.timestamp || item.valid_from || new Date().toISOString();
+
+        return {
+          id: 'guest_offer_' + item.id,
+          originalId: item.id,
+          title: item.title || 'Special Offer',
+          message: item.description || item.message || item.content || 'New offer and discount is available.',
+          hotelName:
+            item.hotel_name ||
+            item.owner_hotel_name ||
+            item.owner_name ||
+            item.hotelName ||
+            (item.hotel && typeof item.hotel === 'object' ? item.hotel.name : null) ||
+            (typeof item.hotel === 'string' ? item.hotel : null) ||
+            'Hotel Owner',
+          timestamp,
+        };
+      })
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  };
+
+  const fetchOffersForBell = useCallback(async ({ playSound = true } = {}) => {
+    try {
+      let response = await fetch(API_BASE_URL + '/api/guest/notifications/', {
+        method: 'GET',
+        headers: getGuestAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        response = await fetch(API_BASE_URL + '/api/promotions/', {
+          method: 'GET',
+          headers: getGuestAuthHeaders(),
+        });
+      }
+
+      if (!response.ok) {
+        setOffersCount(0);
+        return;
+      }
+
+      const data = await response.json().catch(() => []);
+      const notificationItems = normalizeGuestOffers(data);
+
+      currentOfferNotificationIdsRef.current = notificationItems.map((item) => item.id);
+
+      const seenIds = getSeenOfferNotificationIds();
+      const unseenItems = notificationItems.filter((item) => !seenIds.has(item.id));
+      const unseenIds = new Set(unseenItems.map((item) => item.id));
+      const oldUnseenIds = previousUnseenOfferIdsRef.current || new Set();
+      const hasNewId = [...unseenIds].some((id) => !oldUnseenIds.has(id));
+
+      setOffersCount(unseenItems.length);
+
+      if (playSound && unseenItems.length > 0 && hasNewId) {
+        playOffersSound();
+        setNewNotificationPopup(unseenItems[0]);
+        setTimeout(() => setNewNotificationPopup(null), 5000);
+      }
+
+      previousOffersCountRef.current = unseenItems.length;
+      previousUnseenOfferIdsRef.current = unseenIds;
+    } catch (error) {
+      console.error('Failed to fetch guest offer notifications:', error);
+      setOffersCount(0);
+    }
+  }, []);
+
+  const markGuestOfferNotificationsSeen = () => {
+    saveSeenOfferNotificationIds(currentOfferNotificationIdsRef.current);
+    setOffersCount(0);
+    previousOffersCountRef.current = 0;
+    previousUnseenOfferIdsRef.current = new Set();
+    setNewNotificationPopup(null);
+  };
+
+  const handleOffersBellClick = () => {
+    unlockOffersSound();
+    markGuestOfferNotificationsSeen();
+    router.push('/guest/notification-setting');
+  };
 
   const verifyToken = async () => {
     const accessToken = localStorage.getItem('guest_access_token');
@@ -1113,15 +1634,60 @@ export default function GuestDashboard() {
     initAuth();
   }, []);
 
+  useEffect(() => {
+    const syncGuestProfileImage = () => {
+      const savedProfileImage = localStorage.getItem('guestProfileImage');
+      if (savedProfileImage) {
+        setProfile((prev) => ({ ...prev, profile_picture: savedProfileImage }));
+      }
+    };
+
+    syncGuestProfileImage();
+    window.addEventListener('storage', syncGuestProfileImage);
+    window.addEventListener('focus', syncGuestProfileImage);
+
+    return () => {
+      window.removeEventListener('storage', syncGuestProfileImage);
+      window.removeEventListener('focus', syncGuestProfileImage);
+    };
+  }, []);
+
+  useEffect(() => {
+    offersAudioRef.current = new Audio('/sounds/notification.mp3');
+    offersAudioRef.current.preload = 'auto';
+
+    const unlock = () => unlockOffersSound();
+
+    window.addEventListener('click', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    window.addEventListener('touchstart', unlock, { once: true });
+
+    fetchOffersForBell({ playSound: false });
+
+    const interval = setInterval(() => {
+      fetchOffersForBell({ playSound: true });
+    }, 3000);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('keydown', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+  }, [fetchOffersForBell]);
+
   const fetchGuestProfile = async () => {
     try {
       const response = await guestApi.get('/guest/profile/');
       const data = response.data;
 
+      const savedProfileImage = typeof window !== 'undefined' ? localStorage.getItem('guestProfileImage') : '';
+
       setProfile({
         name: data.name || '',
         email: data.email || '',
         phone: data.contact || '',
+        profile_picture: data.profile_picture || data.image || data.photo || savedProfileImage || DEFAULT_GUEST_PROFILE_IMAGE,
         preferences: { pillowType: 'Memory Foam', floorLevel: 'High' },
       });
 
@@ -1362,11 +1928,21 @@ export default function GuestDashboard() {
       ],
     },
     { id: 'payment', name: 'Payment', icon: FaCreditCard, color: 'from-purple-500 to-pink-500' },
-    { id: 'feedback', name: 'Feedback', icon: FaStar, color: 'from-pink-500 to-rose-500' },
     { id: 'rewards', name: 'Rewards', icon: FaTrophy, color: 'from-amber-500 to-yellow-500' },
-    { id: 'offers', name: 'Offers', icon: FaGift, color: 'from-red-500 to-pink-500' },
-    { id: 'profile', name: 'Profile', icon: FaUser, color: 'from-indigo-500 to-purple-500' },
-    { id: 'alerts', name: 'Alerts', icon: FaBell, color: 'from-cyan-500 to-blue-500' },
+    {
+      id: 'settings',
+      name: 'Settings',
+      icon: FaCog,
+      color: 'from-cyan-500 to-blue-500',
+      children: [
+        {
+          id: 'guest-notification-setting',
+          name: 'Notifications & Settings',
+          icon: FaBell,
+          route: '/guest/notification-setting?sidebar=true',
+        },
+      ],
+    },
   ];
 
   if (loading) {
@@ -1447,7 +2023,7 @@ export default function GuestDashboard() {
               Show All Hotels
             </button>
           </div>
-        ) : (
+        ) : (   
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
             {filteredHotels.map((hotel, idx) => (
               <div key={hotel.id} className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden hover-scale animate-fadeInUp group" style={{ animationDelay: `${idx * 0.07}s` }}>
@@ -1658,16 +2234,10 @@ export default function GuestDashboard() {
         return renderBookings();
       case 'payment':
         return renderPlaceholder('Payment');
-      case 'feedback':
-        return renderPlaceholder('Feedback');
       case 'rewards':
         return renderPlaceholder('Rewards');
-      case 'offers':
-        return renderPlaceholder('Offers');
-      case 'profile':
-        return renderProfile();
-      case 'alerts':
-        return renderPlaceholder('Alerts');
+      case 'guest-settings':
+        return renderPlaceholder('Settings');
       default:
         return renderHome();
     }
@@ -1695,6 +2265,30 @@ export default function GuestDashboard() {
       `}</style>
 
       <div className="min-h-screen flex bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 overflow-hidden">
+        {newNotificationPopup && (
+          <div className="fixed top-6 right-6 z-[9999] w-80 rounded-2xl bg-gray-900/95 border border-purple-500/40 shadow-2xl p-4 animate-slideDown">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                <FaBell className="text-purple-400" />
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-semibold text-sm">New owner announcement</p>
+                <p className="text-purple-300 text-xs mt-1 line-clamp-1">From: {newNotificationPopup.hotelName}</p>
+                <p className="text-gray-300 text-sm mt-2 line-clamp-2">{newNotificationPopup.message}</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setNewNotificationPopup(null)}
+                className="text-gray-400 hover:text-white text-lg leading-none"
+                aria-label="Close notification popup"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
         <div className="fixed inset-0 z-0 pointer-events-none">
           <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-purple-900/15 to-indigo-900/20" />
           <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-purple-500/15 rounded-full blur-3xl animate-pulse-slow" />
@@ -1702,25 +2296,40 @@ export default function GuestDashboard() {
         </div>
 
         <aside className={`fixed top-0 left-0 h-screen bg-gradient-to-b from-gray-900/97 via-gray-800/97 to-gray-900/97 backdrop-blur-xl text-white flex flex-col z-20 transform transition-all duration-300 shadow-2xl border-r border-white/10 ${sidebarCollapsed ? 'w-20 -translate-x-full md:translate-x-0' : 'w-72 translate-x-0'}`}>
-          <div className="px-5 py-6 border-b border-white/10">
+          <button
+            type="button"
+            onClick={() => router.push('/guest/profile')}
+            className="w-full px-5 py-6 border-b border-white/10 hover:bg-white/5 transition-all duration-300 group text-left"
+          >
             <div className="flex flex-col items-center">
               <div className="relative">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 p-0.5">
-                  <div className="w-full h-full rounded-xl bg-gray-800 flex items-center justify-center">
-                    <span className="text-xl font-bold text-white">{profile.name?.charAt(0) || 'G'}</span>
+                <div className="w-[86px] h-[86px] rounded-2xl bg-gradient-to-br from-purple-500 via-fuchsia-500 to-pink-500 p-0.5 shadow-lg shadow-purple-500/20 group-hover:scale-105 transition-transform duration-300">
+                  <div className="w-full h-full rounded-[14px] bg-gray-800 overflow-hidden">
+                    <img
+                      src={profile.profile_picture || DEFAULT_GUEST_PROFILE_IMAGE}
+                      alt="Guest profile"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = DEFAULT_GUEST_PROFILE_IMAGE;
+                      }}
+                    />
                   </div>
                 </div>
-                <div className="absolute -bottom-1 -right-1 bg-green-500 rounded-full w-3.5 h-3.5 border-2 border-gray-900" />
+                <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-green-500 border-4 border-gray-900 flex items-center justify-center shadow-lg">
+                  <FaUser className="text-white text-xs" />
+                </div>
               </div>
 
               {!sidebarCollapsed && (
-                <div className="mt-3 text-center">
-                  <h3 className="font-semibold text-base text-white">{profile.name || 'Guest User'}</h3>
+                <div className="mt-4 text-center">
+                  <h3 className="font-semibold text-base text-white group-hover:text-purple-300 transition-colors">
+                    {profile.name || 'Guest User'}
+                  </h3>
                   <p className="text-xs text-gray-400 mt-0.5">{tier} · {loyaltyPoints.toLocaleString()} pts</p>
                 </div>
               )}
             </div>
-          </div>
+          </button>
 
           <div className="px-5 py-3 border-b border-white/10 flex items-center justify-center gap-2">
             <FaHotel className="text-2xl text-purple-400 flex-shrink-0" />
@@ -1736,6 +2345,7 @@ export default function GuestDashboard() {
               const hasChildren = item.children && item.children.length > 0;
               const isChildActive = hasChildren && item.children.some((child) => child.id === activeTab);
               const isActive = activeTab === item.id || isChildActive;
+              const isMenuOpen = item.id === 'settings' ? settingsMenuOpen : bookingMenuOpen;
 
               return (
                 <div key={item.id}>
@@ -1744,10 +2354,15 @@ export default function GuestDashboard() {
                       if (item.id === 'home') {
                         handleHomeClick();
                       } else if (hasChildren) {
-                        setBookingMenuOpen((prev) => !prev);
+                        if (item.id === 'settings') {
+                          setSettingsMenuOpen((prev) => !prev);
+                        } else {
+                          setBookingMenuOpen((prev) => !prev);
+                        }
                       } else {
                         setActiveTab(item.id);
                         setBookingMenuOpen(false);
+                        setSettingsMenuOpen(false);
                       }
                     }}
                     className={`group relative w-full px-3 py-2.5 rounded-xl transition-all duration-200 flex items-center gap-3 overflow-hidden
@@ -1765,21 +2380,27 @@ export default function GuestDashboard() {
                         </span>
 
                         {hasChildren ? (
-                          <FaChevronDown className={`ml-auto text-xs text-gray-400 transition-transform duration-200 ${bookingMenuOpen ? 'rotate-180' : ''}`} />
+                          <FaChevronDown className={`ml-auto text-xs text-gray-400 transition-transform duration-200 ${isMenuOpen ? 'rotate-180' : ''}`} />
                         ) : (
-                          isActive && item.id !== 'alerts' && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-400" />
+                          isActive && item.id !== 'settings' && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-400" />
                         )}
                       </>
                     )}
                   </button>
 
                   {hasChildren && !sidebarCollapsed && (
-                    <div className={`overflow-hidden transition-all duration-300 ease-in-out ${bookingMenuOpen ? 'max-h-32 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
+                    <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isMenuOpen ? 'max-h-40 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
                       <div className="ml-6 pl-3 border-l border-white/10 space-y-1 py-1">
                         {item.children.map((child) => (
                           <button
                             key={child.id}
-                            onClick={() => setActiveTab(child.id)}
+                            onClick={() => {
+                              if (child.route) {
+                                router.push(child.route);
+                              } else {
+                                setActiveTab(child.id);
+                              }
+                            }}
                             className={`group w-full px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3
                               ${activeTab === child.id ? 'bg-purple-500/15 text-purple-200' : 'text-gray-400 hover:text-white hover:bg-white/8'}`}
                           >
@@ -1814,10 +2435,19 @@ export default function GuestDashboard() {
               </button>
 
               <div className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
-                  <span className="text-xs font-bold text-white">{profile.name?.charAt(0) || 'G'}</span>
-                </div>
-                <span className="text-sm text-gray-300 hidden md:block">{profile.name?.split(' ')[0] || 'Guest'}</span>
+                <button
+                  onClick={handleOffersBellClick}
+                  className="relative p-3 rounded-full bg-white/10 hover:bg-white/20 transition-all duration-200 group border border-white/10"
+                  title="Offers & Discount"
+                >
+                  <FaBell className="text-xl text-purple-400 group-hover:scale-110 transition-transform" />
+
+                  {offersCount > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 bg-red-600 text-white text-[11px] font-bold rounded-full flex items-center justify-center animate-pulse border border-white shadow-lg">
+                      {offersCount > 99 ? '99+' : offersCount}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
           </div>

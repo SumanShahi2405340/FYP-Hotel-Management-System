@@ -1,110 +1,154 @@
 'use client';
+// Owner login form styled same as Guest Login, but for hotel owners.
 
 import { useState } from 'react';
-import api from '../utils/api';   
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { FaEye, FaEyeSlash, FaSpinner, FaSignInAlt, FaHotel } from 'react-icons/fa';
+import { useRouter } from 'next/navigation';
+import { FaHotel } from 'react-icons/fa';
 
 export default function OwnerLoginForm() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
-  const [status, setStatus] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
-  const handleLogin = async () => {
-    if (!username || !password) {
-      setMessage("Please enter both username and password");
-      setStatus('error');
-      return;
+  const [form, setForm] = useState({
+    username: '',
+    password: '',
+  });
+
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
+
+  const set = (key) => (e) => {
+    setForm((prev) => ({
+      ...prev,
+      [key]: e.target.value,
+    }));
+  };
+
+  const validate = () => {
+    const newErrors = {};
+
+    if (!form.username.trim()) {
+      newErrors.username = 'Username required';
     }
-    
-    setIsLoading(true);
+
+    if (!form.password.trim()) {
+      newErrors.password = 'Password is required';
+    }
+
+    return newErrors;
+  };
+
+  const handleSubmit = async () => {
+    setApiError('');
+
+    const validationErrors = validate();
+    setErrors(validationErrors);
+
+    if (Object.keys(validationErrors).length > 0) return;
+
+    setLoading(true);
+
     try {
-      const res = await api.post('/api/token/', { username, password });
+      // Use plain fetch here instead of the shared api.js axios instance.
+      // Reason: api.js tries to refresh old expired tokens before login, which can
+      // make correct owner credentials look wrong.
+      const res = await fetch('http://127.0.0.1:8000/api/token/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: form.username.trim(),
+          password: form.password,
+          role: 'owner',
+        }),
+      });
 
-      if (res.status === 200) {
-        // Save JWT token + hotel info
-        localStorage.setItem("authToken", res.data.access);
-        localStorage.setItem("refreshToken", res.data.refresh);
-        localStorage.setItem("hotelId", res.data.hotel_id);
+      const data = await res.json().catch(() => ({}));
 
-        setMessage(res.data.message || 'Login successful! Redirecting...');
-        setStatus('success');
-
-        console.log("Login response:", res.data);
-
-        // Delay redirect by 1.5 seconds
-        setTimeout(() => {
-          router.push("/owner/owner-dashboard");
-        }, 1500);
+      if (!res.ok) {
+        throw new Error(data.error || data.detail || 'Invalid username or password. Please try again.');
       }
+
+      localStorage.setItem('authToken', data.access);
+      localStorage.setItem('refreshToken', data.refresh);
+
+      if (data.hotel_id) {
+        localStorage.setItem('hotelId', data.hotel_id);
+      }
+
+      router.push('/owner/owner-dashboard');
     } catch (err) {
-      setMessage(err.response?.data?.error || 'Login failed. Invalid credentials.');
-      setStatus('error');
-      setIsLoading(false);
+      console.error('Owner login error:', err);
+      setApiError(err.message || 'Invalid username or password. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter') {
+      handleSubmit();
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-teal-600/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-emerald-400/5 rounded-full blur-3xl"></div>
-        
-        {/* Decorative Grid Pattern */}
-        <div 
-          className="absolute inset-0 opacity-30"
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-black">
+      <div className="absolute inset-0 z-0">
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-purple-900/30 to-indigo-900/40"></div>
+
+        <div
+          className="absolute inset-0 opacity-20"
           style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cpattern id='grid' width='60' height='60' patternUnits='userSpaceOnUse'%3E%3Cpath d='M 60 0 L 0 0 0 60' fill='none' stroke='rgba(16,185,129,0.03)' stroke-width='1'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23grid)'/%3E%3C/svg%3E")`
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.2'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundRepeat: 'repeat',
           }}
-        />
+        ></div>
+
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-amber-500/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-1/3 right-1/4 w-80 h-80 bg-purple-600/20 rounded-full blur-3xl animate-pulse delay-700"></div>
+        <div className="absolute top-2/3 left-1/2 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+
+        <div className="absolute inset-0">
+          <div className="absolute top-20 left-10 w-1 h-1 bg-white/20 rounded-full animate-float"></div>
+          <div className="absolute top-40 right-20 w-1.5 h-1.5 bg-white/20 rounded-full animate-float delay-300"></div>
+          <div className="absolute bottom-32 left-1/3 w-2 h-2 bg-white/20 rounded-full animate-float delay-500"></div>
+          <div className="absolute top-3/4 right-1/4 w-1 h-1 bg-white/20 rounded-full animate-float delay-700"></div>
+          <div className="absolute bottom-20 right-10 w-1 h-1 bg-white/20 rounded-full animate-float delay-1000"></div>
+        </div>
       </div>
 
-      {/* Decorative Lines */}
-      <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent"></div>
-      <div className="absolute bottom-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent"></div>
-      
-      <div className="relative z-10 w-full max-w-md mx-4">
-        {/* Main Card */}
-        <div className="bg-white/5 backdrop-blur-xl rounded-2xl shadow-2xl p-8 border border-white/10 hover:border-emerald-500/30 transition-all duration-500 relative">
-          
-          {/* Decorative Corner Accents */}
-          <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-emerald-500/30 rounded-tl-lg"></div>
-          <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-emerald-500/30 rounded-tr-lg"></div>
-          <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-emerald-500/30 rounded-bl-lg"></div>
-          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-emerald-500/30 rounded-br-lg"></div>
+      <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent z-10"></div>
+      <div className="absolute bottom-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent z-10"></div>
 
-          {/* Icon and Greeting */}
+      <div className="relative z-20 w-full max-w-md mx-4">
+        <div className="bg-white/5 backdrop-blur-xl rounded-2xl shadow-2xl p-8 border border-white/10 hover:border-amber-500/30 transition-all duration-500 relative">
+          <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-amber-500/30 rounded-tl-lg"></div>
+          <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-amber-500/30 rounded-tr-lg"></div>
+          <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-amber-500/30 rounded-bl-lg"></div>
+          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-amber-500/30 rounded-br-lg"></div>
+
           <div className="flex flex-col items-center mb-8">
             <div className="relative">
-              <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-xl animate-pulse"></div>
-              <div className="relative w-24 h-24 rounded-full overflow-hidden mb-4 ring-4 ring-emerald-500/30 ring-offset-2 ring-offset-slate-900 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center">
-                <FaHotel className="w-12 h-12 text-emerald-400" />
+              <div className="absolute inset-0 bg-amber-500/20 rounded-full blur-xl animate-pulse"></div>
+              <div className="relative w-24 h-24 rounded-full overflow-hidden mb-4 ring-4 ring-amber-500/30 ring-offset-2 ring-offset-gray-900 bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
+                <FaHotel className="text-amber-400 text-5xl" />
               </div>
             </div>
 
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-emerald-200 to-teal-400 bg-clip-text text-transparent">
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-amber-200 to-amber-400 bg-clip-text text-transparent">
               Welcome Back!
             </h2>
-            <p className="text-sm text-gray-400 mt-1">Hotel Owner Portal</p>
-            
-            {/* Decorative Divider */}
+            <p className="text-sm text-gray-400 mt-1">Sign in to your hotel owner account</p>
+
             <div className="flex items-center gap-3 mt-4">
-              <div className="w-12 h-px bg-gradient-to-r from-transparent to-emerald-500/50"></div>
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/70"></div>
-              <div className="w-12 h-px bg-gradient-to-l from-transparent to-emerald-500/50"></div>
+              <div className="w-12 h-px bg-gradient-to-r from-transparent to-amber-500/50"></div>
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-500/70"></div>
+              <div className="w-12 h-px bg-gradient-to-l from-transparent to-amber-500/50"></div>
             </div>
           </div>
 
-          {/* Login Form */}
           <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-            <span className="w-1 h-6 bg-emerald-500 rounded-full"></span>
+            <span className="w-1 h-6 bg-amber-500 rounded-full"></span>
             Owner Login
           </h3>
 
@@ -115,118 +159,119 @@ export default function OwnerLoginForm() {
               </label>
               <input
                 type="text"
-                placeholder="Enter your username"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                className="w-full px-4 py-3 bg-white/5 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-white placeholder-gray-500 transition-all duration-300 hover:bg-white/10"
+                placeholder="Enter owner username"
+                value={form.username}
+                onChange={set('username')}
+                onKeyDown={handleKey}
+                autoComplete="username"
+                className="w-full px-4 py-3 bg-white/5 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-white placeholder-gray-500 transition-all duration-300 hover:bg-white/10"
               />
+              {errors.username && (
+                <p className="mt-1 text-xs text-red-400">{errors.username}</p>
+              )}
             </div>
 
             <div className="group">
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Password
               </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                  className="w-full px-4 py-3 bg-white/5 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-white placeholder-gray-500 transition-all duration-300 hover:bg-white/10 pr-12"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                >
-                  {showPassword ? 
-                    <FaEyeSlash className="text-gray-400 hover:text-emerald-400 transition-colors" /> : 
-                    <FaEye className="text-gray-400 hover:text-emerald-400 transition-colors" />
-                  }
-                </button>
-              </div>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={form.password}
+                onChange={set('password')}
+                onKeyDown={handleKey}
+                autoComplete="current-password"
+                className="w-full px-4 py-3 bg-white/5 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-white placeholder-gray-500 transition-all duration-300 hover:bg-white/10"
+              />
+              {errors.password && (
+                <p className="mt-1 text-xs text-red-400">{errors.password}</p>
+              )}
             </div>
 
-            <div className="flex justify-end">
-              <Link 
-                href="/owner/forgot-password" 
-                className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors duration-300 hover:underline"
-              >
-                Forgot Password?
-              </Link>
-            </div>
 
             <button
-              onClick={handleLogin}
-              disabled={isLoading}
-              className="relative w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-[1.02] active:scale-98 shadow-lg shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
+              onClick={handleSubmit}
+              disabled={loading}
+              className="relative w-full bg-gradient-to-r from-amber-500 to-amber-600 text-white py-3 rounded-lg font-semibold hover:from-amber-600 hover:to-amber-700 transition-all duration-300 transform hover:scale-[1.02] active:scale-98 shadow-lg shadow-amber-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              {isLoading ? (
-                <>
-                  <FaSpinner className="animate-spin h-5 w-5" />
-                  <span>Authenticating...</span>
-                </>
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Logging in…</span>
+                </div>
               ) : (
-                <>
-                  <FaSignInAlt className="text-sm" />
-                  <span>Login to Dashboard</span>
-                </>
+                'Login'
               )}
             </button>
 
-            {message && (
-              <div className={`mt-4 p-3 rounded-lg text-center text-sm ${
-                status === 'success' 
-                  ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
-                  : 'bg-red-500/10 border border-red-500/30 text-red-400'
-              }`}>
+            {apiError && (
+              <div className="mt-4 p-3 rounded-lg text-center text-sm bg-red-500/10 border border-red-500/30 text-red-400">
                 <div className="flex items-center justify-center gap-2">
-                  {status === 'success' ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                  )}
-                  <span>{message}</span>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{apiError}</span>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Footer Note */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10"></div>
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="px-2 bg-transparent text-gray-400">New hotel owner?</span>
+            </div>
+          </div>
+
+          <button
+            onClick={() => router.push('/owner/signup')}
+            className="w-full bg-white/5 border border-white/10 text-white py-3 rounded-lg font-semibold hover:bg-white/10 transition-all duration-300 transform hover:scale-[1.02] active:scale-98"
+          >
+            Create New Account
+          </button>
+
           <div className="mt-8 pt-6 border-t border-white/10 text-center">
             <p className="text-xs text-gray-500">
-              Secure owner portal • Manage your properties
+              Secure owner portal • Powered by CloudInn
             </p>
           </div>
         </div>
 
-        {/* Back to Home Link */}
         <div className="text-center mt-6">
-          <Link 
-            href="/" 
-            className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-emerald-400 transition-colors duration-300 group"
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-amber-400 transition-colors duration-300 group"
           >
             <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             Back to Home
           </Link>
         </div>
       </div>
 
-      {/* Floating Particles Effect */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-20 left-10 w-1 h-1 bg-emerald-400/50 rounded-full animate-ping"></div>
-        <div className="absolute top-40 right-20 w-1 h-1 bg-teal-400/50 rounded-full animate-ping delay-700"></div>
-        <div className="absolute bottom-32 left-1/4 w-1 h-1 bg-emerald-400/50 rounded-full animate-ping delay-300"></div>
-        <div className="absolute bottom-20 right-1/3 w-1 h-1 bg-teal-400/50 rounded-full animate-ping delay-1000"></div>
-      </div>
+      <style jsx>{`
+        @keyframes float {
+          0%, 100% {
+            transform: translateY(0px);
+            opacity: 0.2;
+          }
+          50% {
+            transform: translateY(-20px);
+            opacity: 0.4;
+          }
+        }
+
+        .animate-float {
+          animation: float 6s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   );
 }

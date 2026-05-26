@@ -602,7 +602,7 @@ function RoomBookingPopup({ hotelId, hotel, room, bookings, onBookingSuccess, se
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   HOTEL MAP CARD (unchanged)
+   HOTEL MAP CARD (fixed Google Maps embed)
 ══════════════════════════════════════════════════════════════════════ */
 const HotelMapCard = ({ hotel }) => {
   const [mapError, setMapError] = useState(false);
@@ -612,29 +612,247 @@ const HotelMapCard = ({ hotel }) => {
   const [locationError, setLocationError] = useState(null);
   const [directionsUrl, setDirectionsUrl] = useState(null);
   const [copySuccess, setCopySuccess] = useState(false);
-  const locationQuery = encodeURIComponent(hotel.location || hotel.name || 'Kathmandu, Nepal');
+
+  const safeNumber = (value) => {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const latitude = safeNumber(hotel?.latitude ?? hotel?.lat);
+  const longitude = safeNumber(hotel?.longitude ?? hotel?.lng ?? hotel?.long);
+  const hasCoordinates = latitude !== null && longitude !== null;
+
+  // Fallback is Kathmandu, so the map never becomes blank even if backend has no coordinates.
+  const mapLat = hasCoordinates ? latitude : 27.7172;
+  const mapLng = hasCoordinates ? longitude : 85.3240;
+
+  const getFormattedLocation = () => {
+    if (!hotel) return 'Location not available';
+    const location = hotel.location || hotel.address || '';
+    const name = hotel.name || '';
+    if (location && name) return `${location}, ${name}`;
+    return location || name || 'Location not available';
+  };
+
+  const locationQuery = encodeURIComponent(
+    hasCoordinates ? `${mapLat},${mapLng}` : getFormattedLocation()
+  );
   const googleMapsLink = `https://www.google.com/maps/search/?api=1&query=${locationQuery}`;
-  const score = hotel.review_score ? (hotel.review_score * 10 / 5).toFixed(1) : '8.5';
+  // Google Maps embed is more reliable than the previous OpenStreetMap iframe/bbox.
+  // It works with exact latitude/longitude and still displays an approximate map using the hotel address/name.
+  const mapSrc = `https://maps.google.com/maps?q=${locationQuery}&z=15&output=embed`;
+  const destinationForDirections = hasCoordinates
+    ? `${mapLat},${mapLng}`
+    : encodeURIComponent(getFormattedLocation());
+
+  const score = hotel?.review_score ? (hotel.review_score * 10 / 5).toFixed(1) : '8.5';
   const scoreLabel = parseFloat(score) >= 9 ? 'Excellent' : parseFloat(score) >= 8 ? 'Very Good' : 'Good';
-  const getFormattedLocation = () => { if (!hotel) return 'Location not available'; const l = hotel.location || '', n = hotel.name || ''; if (l && n) return `${l}, ${n}`; return l || n || 'Location not available'; };
-  const copyLocationToClipboard = () => { navigator.clipboard.writeText(getFormattedLocation()).then(() => { setCopySuccess(true); setTimeout(() => setCopySuccess(false), 2000); }); };
+
+  const copyLocationToClipboard = () => {
+    const valueToCopy = hasCoordinates
+      ? `${getFormattedLocation()} (${mapLat}, ${mapLng})`
+      : getFormattedLocation();
+
+    navigator.clipboard.writeText(valueToCopy).then(() => {
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    });
+  };
+
   const getUserLocation = () => {
-    setGettingLocation(true); setLocationError(null);
-    if (!navigator.geolocation) { setLocationError("Geolocation not supported"); setGettingLocation(false); return; }
+    setGettingLocation(true);
+    setLocationError(null);
+
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation is not supported in this browser.');
+      setGettingLocation(false);
+      setShowDirections(true);
+      return;
+    }
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => { const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude }; setUserLocation(loc); setGettingLocation(false); setShowDirections(true); const dest = hotel?.latitude && hotel?.longitude ? `${hotel.latitude},${hotel.longitude}` : encodeURIComponent(hotel?.location || hotel?.name || ''); setDirectionsUrl(`https://www.google.com/maps/dir/?api=1&origin=${loc.lat},${loc.lng}&destination=${dest}&travelmode=driving`); },
-      (err) => { const msgs = { 1: 'Please allow location access.', 2: 'Location unavailable.', 3: 'Request timed out.' }; setLocationError('Unable to get your location. ' + (msgs[err.code] || '')); setGettingLocation(false); setShowDirections(true); },
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setUserLocation(loc);
+        setGettingLocation(false);
+        setShowDirections(true);
+        setDirectionsUrl(
+          `https://www.google.com/maps/dir/?api=1&origin=${loc.lat},${loc.lng}&destination=${destinationForDirections}&travelmode=driving`
+        );
+      },
+      (err) => {
+        const msgs = {
+          1: 'Please allow location access from your browser.',
+          2: 'Your current location is unavailable.',
+          3: 'Location request timed out.',
+        };
+        setLocationError(msgs[err.code] || 'Unable to get your location.');
+        setGettingLocation(false);
+        setShowDirections(true);
+      },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
+
   return (
     <>
       <div className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden hover-scale h-full flex flex-col">
-        <div className="p-5 border-b border-white/10"><div className="flex items-start gap-4"><div className="flex-shrink-0 text-center"><div className="bg-blue-600 text-white text-2xl font-bold px-3 py-2 rounded-lg leading-none">{score}</div><div className="text-xs text-gray-400 mt-1">{scoreLabel}</div></div><div className="flex-1 min-w-0"><p className="text-xs font-semibold text-gray-300 mb-1">Top-rated guest experiences</p><p className="text-sm text-gray-200 italic leading-snug line-clamp-3">"Good location, clean property, good value. Nice front desk staff."</p><div className="flex items-center gap-2 mt-2"><div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">M</div><span className="text-xs text-gray-400">Mridu</span><span className="text-xs text-gray-500">🇺🇸 United States</span></div></div><FaChevronRight className="text-gray-500 text-sm flex-shrink-0" /></div><div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10"><span className="text-sm text-gray-300 font-medium">Staff</span><span className="bg-transparent border border-gray-500 text-gray-200 text-sm font-semibold px-2 py-0.5 rounded">8.2</span></div></div>
-        <div className="relative flex-1 min-h-52 bg-gray-800"><div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 bg-white/90 backdrop-blur-sm text-gray-800 text-xs font-semibold px-3 py-1.5 rounded-full shadow"><FaTag className="text-blue-600 text-[10px]" /> We Price Match</div><button onClick={getUserLocation} disabled={gettingLocation} className="absolute bottom-3 left-3 z-10 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-xs font-semibold px-3 py-2 rounded-full shadow-lg transition-all flex items-center gap-2">{gettingLocation ? <FaSpinner className="animate-spin text-xs" /> : <FaDirections className="text-xs" />} Get Directions</button><button onClick={copyLocationToClipboard} className="absolute bottom-3 left-36 z-10 bg-purple-500/80 hover:bg-purple-600 backdrop-blur-sm text-white text-xs font-semibold px-3 py-2 rounded-full shadow-lg transition-all flex items-center gap-2">{copySuccess ? <FaCheckCircle className="text-xs text-green-300" /> : <FaCopy className="text-xs" />}{copySuccess ? 'Copied!' : 'Copy Location'}</button><a href={googleMapsLink} target="_blank" rel="noopener noreferrer" className="absolute bottom-3 right-3 z-10 bg-white/90 hover:bg-white backdrop-blur-sm text-gray-800 text-xs font-semibold px-4 py-2 rounded-full shadow-lg transition-all flex items-center gap-2 whitespace-nowrap"><FaMapMarkerAlt className="text-blue-600 text-xs" /> Show on map</a><iframe title="Hotel location map" width="100%" height="100%" frameBorder="0" scrolling="no" marginHeight="0" marginWidth="0" src="https://www.openstreetmap.org/export/embed.html?bbox=85.20,27.60,85.50,27.82&layer=mapnik&marker=27.7172,85.3240" className="w-full h-full absolute inset-0" onError={() => setMapError(true)} style={{ filter: 'saturate(0.8) brightness(0.9)' }} />{mapError && (<div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-800/90"><FaMap className="text-4xl text-gray-500 mb-2" /><p className="text-gray-400 text-sm">Map unavailable</p><a href={googleMapsLink} target="_blank" rel="noopener noreferrer" className="mt-2 text-purple-400 text-xs underline flex items-center gap-1">Open in Google Maps <FaExternalLinkAlt className="text-[10px]" /></a></div>)}</div>
-        <div className="px-5 py-3 flex items-center gap-2 border-t border-white/10"><FaMapMarkerAlt className="text-purple-400 text-xs flex-shrink-0" /><span className="text-sm text-gray-300 truncate">{getFormattedLocation()}</span><a href={googleMapsLink} target="_blank" rel="noopener noreferrer" className="ml-auto text-purple-400 text-xs hover:underline flex-shrink-0 flex items-center gap-1">Directions <FaExternalLinkAlt className="text-[8px]" /></a></div>
+        <div className="p-5 border-b border-white/10">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0 text-center">
+              <div className="bg-blue-600 text-white text-2xl font-bold px-3 py-2 rounded-lg leading-none">{score}</div>
+              <div className="text-xs text-gray-400 mt-1">{scoreLabel}</div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-gray-300 mb-1">Top-rated guest experiences</p>
+              <p className="text-sm text-gray-200 italic leading-snug line-clamp-3">
+                "Good location, clean property, good value. Nice front desk staff."
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">M</div>
+                <span className="text-xs text-gray-400">Mridu</span>
+                <span className="text-xs text-gray-500">🇺🇸 United States</span>
+              </div>
+            </div>
+            <FaChevronRight className="text-gray-500 text-sm flex-shrink-0" />
+          </div>
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10">
+            <span className="text-sm text-gray-300 font-medium">Staff</span>
+            <span className="bg-transparent border border-gray-500 text-gray-200 text-sm font-semibold px-2 py-0.5 rounded">8.2</span>
+          </div>
+        </div>
+
+        <div className="relative h-[340px] min-h-[340px] bg-gray-800 overflow-hidden">
+          <iframe
+            title="Hotel location map"
+            width="100%"
+            height="100%"
+            frameBorder="0"
+            scrolling="no"
+            marginHeight="0"
+            marginWidth="0"
+            src={mapSrc}
+            className="absolute inset-0 z-0 h-full w-full rounded-none"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            onLoad={() => setMapError(false)}
+            onError={() => setMapError(true)}
+            style={{ border: 0 }}
+          />
+
+          <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 bg-white/90 backdrop-blur-sm text-gray-800 text-xs font-semibold px-3 py-1.5 rounded-full shadow">
+            <FaTag className="text-blue-600 text-[10px]" /> We Price Match
+          </div>
+
+          {!hasCoordinates && (
+            <div className="absolute top-3 left-3 z-10 bg-amber-500/95 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow flex items-center gap-1.5">
+              <FaInfoCircle className="text-[10px]" /> Approximate map
+            </div>
+          )}
+
+          <div className="absolute bottom-3 left-3 right-3 z-10 flex flex-wrap gap-2">
+            <button
+              onClick={getUserLocation}
+              disabled={gettingLocation}
+              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-xs font-semibold px-3 py-2 rounded-full shadow-lg transition-all flex items-center gap-2 disabled:opacity-60"
+            >
+              {gettingLocation ? <FaSpinner className="animate-spin text-xs" /> : <FaDirections className="text-xs" />}
+              Get Directions
+            </button>
+
+            <button
+              onClick={copyLocationToClipboard}
+              className="bg-purple-500/90 hover:bg-purple-600 backdrop-blur-sm text-white text-xs font-semibold px-3 py-2 rounded-full shadow-lg transition-all flex items-center gap-2"
+            >
+              {copySuccess ? <FaCheckCircle className="text-xs text-green-300" /> : <FaCopy className="text-xs" />}
+              {copySuccess ? 'Copied!' : 'Copy Location'}
+            </button>
+
+            <a
+              href={googleMapsLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto bg-white/95 hover:bg-white backdrop-blur-sm text-gray-800 text-xs font-semibold px-4 py-2 rounded-full shadow-lg transition-all flex items-center gap-2 whitespace-nowrap"
+            >
+              <FaMapMarkerAlt className="text-blue-600 text-xs" /> Show on map
+            </a>
+          </div>
+
+          {mapError && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-gray-800/95">
+              <FaMap className="text-4xl text-gray-500 mb-2" />
+              <p className="text-gray-300 text-sm font-semibold">Map could not be loaded</p>
+              <p className="text-gray-500 text-xs mt-1 text-center px-4">Please check your internet connection or open the location in Google Maps.</p>
+              <a href={googleMapsLink} target="_blank" rel="noopener noreferrer" className="mt-3 text-purple-400 text-xs underline flex items-center gap-1">
+                Open in Google Maps <FaExternalLinkAlt className="text-[10px]" />
+              </a>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 flex items-center gap-2 border-t border-white/10">
+          <FaMapMarkerAlt className="text-purple-400 text-xs flex-shrink-0" />
+          <span className="text-sm text-gray-300 truncate">{getFormattedLocation()}</span>
+          <a href={googleMapsLink} target="_blank" rel="noopener noreferrer" className="ml-auto text-purple-400 text-xs hover:underline flex-shrink-0 flex items-center gap-1">
+            Directions <FaExternalLinkAlt className="text-[8px]" />
+          </a>
+        </div>
       </div>
-      {showDirections && (<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fadeInUp"><div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl max-w-md w-full mx-4 shadow-2xl border border-purple-500/30"><div className="p-6"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold text-white flex items-center gap-2"><FaRoute className="text-purple-400" /> Directions to {hotel?.name}</h3><button onClick={() => { setShowDirections(false); setUserLocation(null); setDirectionsUrl(null); setLocationError(null); }} className="p-1 hover:bg-white/10 rounded-lg transition"><FaTimes className="text-gray-400" /></button></div>{locationError ? (<div className="space-y-4"><div className="bg-red-500/20 border border-red-500/30 rounded-lg p-4"><p className="text-red-400 text-sm">{locationError}</p></div><button onClick={() => { setShowDirections(false); setLocationError(null); }} className="w-full px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition">Close</button></div>) : userLocation && directionsUrl ? (<div className="space-y-4"><div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4"><p className="text-blue-400 text-sm flex items-center gap-2"><FaLocationArrow className="animate-pulse" /> Your location detected!</p><p className="text-gray-300 text-xs mt-1">Lat: {userLocation.lat.toFixed(6)}, Lng: {userLocation.lng.toFixed(6)}</p></div><div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4"><p className="text-purple-400 text-sm">Destination: {hotel?.name}</p><p className="text-gray-300 text-xs mt-1 font-mono">{getFormattedLocation()}</p></div><button onClick={() => window.open(directionsUrl, '_blank')} className="w-full py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:opacity-90 transition flex items-center justify-center gap-2"><FaDirections /> Open Google Maps Directions</button></div>) : (<div className="text-center py-8"><FaSpinner className="animate-spin text-purple-400 text-3xl mx-auto mb-3" /><p className="text-gray-300">Getting your location...</p></div>)}</div></div></div>)}
+
+      {showDirections && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fadeInUp">
+          <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl max-w-md w-full mx-4 shadow-2xl border border-purple-500/30">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2"><FaRoute className="text-purple-400" /> Directions to {hotel?.name || 'Hotel'}</h3>
+                <button
+                  onClick={() => { setShowDirections(false); setUserLocation(null); setDirectionsUrl(null); setLocationError(null); }}
+                  className="p-1 hover:bg-white/10 rounded-lg transition"
+                >
+                  <FaTimes className="text-gray-400" />
+                </button>
+              </div>
+
+              {locationError ? (
+                <div className="space-y-4">
+                  <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-4">
+                    <p className="text-red-400 text-sm">{locationError}</p>
+                  </div>
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${destinationForDirections}&travelmode=driving`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition flex items-center justify-center gap-2"
+                  >
+                    <FaDirections /> Open Destination in Maps
+                  </a>
+                  <button onClick={() => { setShowDirections(false); setLocationError(null); }} className="w-full px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition">Close</button>
+                </div>
+              ) : userLocation && directionsUrl ? (
+                <div className="space-y-4">
+                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                    <p className="text-blue-400 text-sm flex items-center gap-2"><FaLocationArrow className="animate-pulse" /> Your location detected!</p>
+                    <p className="text-gray-300 text-xs mt-1">Lat: {userLocation.lat.toFixed(6)}, Lng: {userLocation.lng.toFixed(6)}</p>
+                  </div>
+                  <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
+                    <p className="text-purple-400 text-sm">Destination: {hotel?.name || 'Hotel'}</p>
+                    <p className="text-gray-300 text-xs mt-1 font-mono">{getFormattedLocation()}</p>
+                    {hasCoordinates && <p className="text-gray-500 text-[11px] mt-1">{mapLat}, {mapLng}</p>}
+                  </div>
+                  <button onClick={() => window.open(directionsUrl, '_blank')} className="w-full py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:opacity-90 transition flex items-center justify-center gap-2">
+                    <FaDirections /> Open Google Maps Directions
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <FaSpinner className="animate-spin text-purple-400 text-3xl mx-auto mb-3" />
+                  <p className="text-gray-300">Getting your location...</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
@@ -1278,6 +1496,10 @@ export default function HotelInfo({ id: propId } = {}) {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [reviews, setReviews] = useState([]);
+  const [reviewForm, setReviewForm] = useState({ name: '', country: '', rating: 0, comment: '' });
+  const [hoverRating, setHoverRating] = useState(0);
+  const [reviewError, setReviewError] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [facilities, setFacilities] = useState([]);
   const [roomTypes, setRoomTypes] = useState([]);
   const [favHotels, setFavHotels] = useState([]);
@@ -1353,12 +1575,12 @@ export default function HotelInfo({ id: propId } = {}) {
           const mapped = rooms.map(r => ({ id: r.room_number, room_type: mapRoomTypeDisplay(r.room_type), price_per_night: r.price_per_night, capacity: r.capacity, amenities: r.amenities, bed_type: r.bed_type }));
           setRoomTypes(mapped);
         } catch { setRoomTypes([ { id:1, room_type:'Normal', price_per_night: hotelData.normal_price || 5000, capacity:2 }, { id:2, room_type:'Deluxe', price_per_night: hotelData.deluxe_price || 8000, capacity:3 }, { id:3, room_type:'Suite', price_per_night: hotelData.suite_price || 12000, capacity:4 } ]); }
-        setReviews([
-          { id:1, user:{ first_name:'Mridu', last_name:'' }, country:'United States', rating:8.0, comment:'Good location, clean property, good value.', created_at:'2024-12-15' },
-          { id:2, user:{ first_name:'Sunny', last_name:'' }, country:'India', rating:9.2, comment:'Our stay was truly exceptional!', created_at:'2024-12-10' },
-          { id:3, user:{ first_name:'Neeraj', last_name:'' }, country:'United States', rating:8.5, comment:'Very clean and well-maintained property.', created_at:'2024-12-05' },
-          { id:4, user:{ first_name:'Priya', last_name:'' }, country:'Nepal', rating:7.8, comment:'Great hospitality and wonderful food.', created_at:'2024-11-28' }
-        ]);
+        try {
+          const reviewsRes = await guestApi.get(`/hotels/${id}/guest-reviews/`);
+          setReviews(reviewsRes.data.reviews || []);
+        } catch (reviewErr) {
+          setReviews([]);
+        }
         const facilitiesList = [
           { name:'Free High-Speed WiFi', icon:FaWifi, available:true },
           { name:'Air Conditioning', icon:FaSnowflake, available:true },
@@ -1403,7 +1625,7 @@ export default function HotelInfo({ id: propId } = {}) {
           { name:'Swimming Pool', icon:FaSwimmer, available:true },
           { name:'Fitness Center', icon:FaDumbbell, available:true }
         ]);
-        setReviews([ { id:1, user:{ first_name:'Demo', last_name:'' }, country:'Nepal', rating:9.0, comment:'Great hotel!', created_at:new Date().toISOString() } ]);
+        setReviews([ { id:1, user:{ first_name:'Demo', last_name:'' }, country:'Nepal', rating:5, comment:'Great hotel!', created_at:new Date().toISOString() } ]);
         setGlobalBookings([]);
         const demoRooms = [];
         for (let i = 1; i <= 20; i++) {
@@ -1425,6 +1647,63 @@ export default function HotelInfo({ id: propId } = {}) {
   const scrollToSection = (key) => { const refs = { overview:overviewRef, prices:pricesRef, facilities:facilitiesRef, legal:legalRef, reviews:reviewsRef, deals:dealsRef }; const target = refs[key]; if (target?.current) target.current.scrollIntoView({ behavior:'smooth', block:'start' }); };
   const handleTabClick = (key) => { setActiveTab(key); scrollToSection(key); };
   const toggleFav = (hotelId) => { setFavHotels(prev => prev.includes(hotelId) ? prev.filter(x=>x!==hotelId) : [...prev, hotelId]); toast(hotelId ? (favHotels.includes(hotelId) ? 'Removed from favorites' : 'Added to favorites') : ''); };
+
+  const averageReviewRating = useMemo(() => {
+    if (!reviews.length) return 0;
+    const total = reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0);
+    return total / reviews.length;
+  }, [reviews]);
+
+  const getReviewLabel = (rating) => {
+    if (rating >= 4.5) return 'Excellent';
+    if (rating >= 4) return 'Very Good';
+    if (rating >= 3) return 'Good';
+    if (rating >= 2) return 'Fair';
+    return 'Needs Improvement';
+  };
+
+  const handleReviewSubmit = async (event) => {
+    event.preventDefault();
+    const name = reviewForm.name.trim();
+    const country = reviewForm.country.trim();
+    const comment = reviewForm.comment.trim();
+    const rating = Number(reviewForm.rating);
+
+    if (!name) { setReviewError('Please enter your name.'); return; }
+    if (!rating || rating < 1 || rating > 5) { setReviewError('Please give a star rating from 1 to 5.'); return; }
+    if (!comment) { setReviewError('Please write your review before submitting.'); return; }
+
+    setReviewSubmitting(true);
+    setReviewError('');
+
+    try {
+      const response = await guestApi.post(`/hotels/${id}/guest-reviews/`, {
+        name,
+        country: country || 'Nepal',
+        rating,
+        comment,
+      });
+
+      const savedReview = response.data.review;
+      setReviews(prev => [savedReview, ...prev]);
+      setReviewForm({ name: '', country: '', rating: 0, comment: '' });
+      setHoverRating(0);
+      toast(response.data.message || 'Review added successfully', 'success');
+    } catch (err) {
+      const apiError = err?.response?.data?.errors || err?.response?.data?.error;
+      if (typeof apiError === 'string') {
+        setReviewError(apiError);
+      } else if (apiError && typeof apiError === 'object') {
+        const firstKey = Object.keys(apiError)[0];
+        const firstMessage = Array.isArray(apiError[firstKey]) ? apiError[firstKey][0] : apiError[firstKey];
+        setReviewError(firstMessage || 'Failed to submit review. Please try again.');
+      } else {
+        setReviewError('Failed to submit review. Please check backend is running and try again.');
+      }
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
 
   if (loading) return <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center"><div className="text-center"><FaSpinner className="animate-spin text-5xl mx-auto mb-4 text-purple-400" /><p className="text-white text-lg">Loading hotel details...</p></div></div>;
   if (error || !hotel) return <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center"><div className="text-center text-red-400 bg-black/30 p-8 rounded-2xl"><p className="text-lg">{error || 'Hotel not found'}</p><button onClick={() => router.push('/guest/dashboard')} className="mt-6 px-6 py-2 bg-purple-500/20 hover:bg-purple-500/30 rounded-lg text-purple-300 transition-all">← Back to Dashboard</button></div></div>;
@@ -1488,7 +1767,36 @@ export default function HotelInfo({ id: propId } = {}) {
           </div>
         </div>
 
-        <div ref={overviewRef} className="scroll-mt-20 mb-12"><div className="grid lg:grid-cols-2 gap-8 items-stretch"><div className="flex flex-col gap-6"><div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 hover-scale"><h2 className="text-xl font-semibold text-white mb-4">About {hotel.name}</h2><p className="text-gray-300 leading-relaxed">{hotel.description || 'Experience luxury and comfort at its finest.'}</p><div className="mt-5 p-4 bg-white/5 rounded-xl border border-white/10"><div className="flex items-center gap-2 mb-3"><div className="w-1 h-5 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" /><h3 className="text-sm font-bold text-purple-300 uppercase tracking-wider">About Dwarkias</h3></div><p className="text-gray-300 text-sm leading-relaxed">Dwarkias is a renowned hospitality brand deeply rooted in India's cultural and spiritual heritage, celebrated for its vegetarian cuisine and heritage accommodations across sacred pilgrimage destinations like Mathura, Vrindavan, Dwarka, and Pushkar. With a philosophy of service as devotion, Dwarkias offers clean, warm, and authentic hospitality, blending modern amenities with traditional values.</p></div><div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm"><div className="flex items-center gap-3 text-gray-300"><FaPhoneAlt className="text-purple-400" /><span>{hotel.contact || '+977-1-1234567'}</span></div><div className="flex items-center gap-3 text-gray-300"><FaEnvelope className="text-purple-400" /><span>{hotel.email || 'info@hotel.com'}</span></div><div className="flex items-center gap-3 text-gray-300 sm:col-span-2"><FaMapMarkerAlt className="text-purple-400" /><span>{hotel.location || 'Kathmandu, Nepal'}</span></div></div></div></div><div className="flex-1 min-h-0"><HotelMapCard hotel={hotel} /></div></div></div>
+        <div ref={overviewRef} className="scroll-mt-20 mb-12">
+          <div className="grid lg:grid-cols-2 gap-8 items-stretch">
+            <div className="h-full">
+              <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 hover-scale h-full flex flex-col">
+                <h2 className="text-xl font-semibold text-white mb-4">About {hotel.name}</h2>
+                <p className="text-gray-300 leading-relaxed">{hotel.description || 'Experience luxury and comfort at its finest.'}</p>
+
+                <div className="mt-5 p-4 bg-white/5 rounded-xl border border-white/10 flex-1">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-1 h-5 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />
+                    <h3 className="text-sm font-bold text-purple-300 uppercase tracking-wider">About Dwarkias</h3>
+                  </div>
+                  <p className="text-gray-300 text-sm leading-relaxed">
+                    Dwarkias is a renowned hospitality brand deeply rooted in India's cultural and spiritual heritage, celebrated for its vegetarian cuisine and heritage accommodations across sacred pilgrimage destinations like Mathura, Vrindavan, Dwarka, and Pushkar. With a philosophy of service as devotion, Dwarkias offers clean, warm, and authentic hospitality, blending modern amenities with traditional values.
+                  </p>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div className="flex items-center gap-3 text-gray-300"><FaPhoneAlt className="text-purple-400" /><span>{hotel.contact || '+977-1-1234567'}</span></div>
+                  <div className="flex items-center gap-3 text-gray-300"><FaEnvelope className="text-purple-400" /><span>{hotel.email || 'info@hotel.com'}</span></div>
+                  <div className="flex items-center gap-3 text-gray-300 sm:col-span-2"><FaMapMarkerAlt className="text-purple-400" /><span>{hotel.location || 'Kathmandu, Nepal'}</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-full">
+              <HotelMapCard hotel={hotel} />
+            </div>
+          </div>
+        </div>
 
         <div ref={pricesRef} className="scroll-mt-20 mb-12"><GuestRoomStatusPanel hotelId={id} hotel={hotel} bookings={globalBookings} allRooms={globalRooms} onBookingSuccess={setGlobalBookings} setAllRooms={setGlobalRooms} /></div>
 
@@ -1496,7 +1804,130 @@ export default function HotelInfo({ id: propId } = {}) {
 
         <div ref={legalRef} className="scroll-mt-20 mb-12"><div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10"><h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><FaShieldAlt className="text-purple-400" /> Important Information</h2><div className="grid md:grid-cols-2 gap-6"><div className="space-y-4"><div className="flex items-start gap-3"><FaClock className="text-purple-400 mt-1" /><div><div className="text-white font-medium">Check-in / Check-out</div><div className="text-gray-400 text-sm">Check-in: From {hotel.check_in_time || '14:00'}</div><div className="text-gray-400 text-sm">Check-out: Until {hotel.check_out_time || '12:00'}</div></div></div><div className="flex items-start gap-3"><FaCreditCard className="text-purple-400 mt-1" /><div><div className="text-white font-medium">Payment Methods</div><div className="text-gray-400 text-sm">{hotel.payment_methods?.join(', ') || 'Visa, Mastercard, American Express, Cash'}</div></div></div><div className="flex items-start gap-3"><FaBan className="text-purple-400 mt-1" /><div><div className="text-white font-medium">Cancellation Policy</div><div className="text-gray-400 text-sm">{hotel.cancellation_policy || 'Free cancellation up to 24 hours before check-in.'}</div></div></div></div><div className="space-y-4"><div className="flex items-start gap-3"><FaChild className="text-purple-400 mt-1" /><div><div className="text-white font-medium">Children & Extra Beds</div><div className="text-gray-400 text-sm">{hotel.children_policy || 'Children of all ages are welcome.'}</div></div></div><div className="flex items-start gap-3"><FaDog className="text-purple-400 mt-1" /><div><div className="text-white font-medium">Pet Policy</div><div className="text-gray-400 text-sm">{hotel.pet_policy || 'Pets are not allowed.'}</div></div></div><div className="flex items-start gap-3"><FaSmoking className="text-purple-400 mt-1" /><div><div className="text-white font-medium">Smoking Policy</div><div className="text-gray-400 text-sm">{hotel.smoking_policy || 'Non-smoking rooms available.'}</div></div></div></div></div></div></div>
 
-        <div ref={reviewsRef} className="scroll-mt-20 mb-12"><div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10"><h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><FaStar className="text-purple-400" /> Guest Reviews</h2><div className="flex items-center gap-6 mb-8 pb-4 border-b border-white/10"><div className="bg-gradient-to-br from-purple-600 to-pink-600 text-white text-4xl font-bold px-6 py-3 rounded-xl">{(hotel.review_score*10/5 || 8.5).toFixed(1)}</div><div><div className="text-white text-xl font-semibold">Good</div><div className="text-gray-400">Based on {reviews.length} guest reviews</div></div></div><div className="space-y-5">{reviews.map(r => (<div key={r.id} className="border-b border-white/10 pb-5 last:border-0 hover:bg-white/5 -mx-2 px-2 py-3 rounded-lg transition-colors"><div className="flex items-center justify-between mb-2"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold">{r.user?.first_name?.[0] || 'G'}</div><div><div className="text-white font-medium">{r.user?.first_name} {r.user?.last_name}</div><div className="text-gray-500 text-xs">{r.country || 'Nepal'} · {r.created_at ? new Date(r.created_at).toLocaleDateString() : 'Recent'}</div></div></div><div className="bg-purple-600/30 text-purple-300 px-3 py-1 rounded-full text-sm font-bold">★ {r.rating}</div></div><p className="text-gray-300 text-sm leading-relaxed">{r.comment}</p></div>))}</div></div></div>
+        <div ref={reviewsRef} className="scroll-mt-20 mb-12">
+          <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10">
+            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+              <FaStar className="text-purple-400" /> Guest Reviews
+            </h2>
+
+            <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-6 mb-8 pb-6 border-b border-white/10">
+              <div className="flex items-center gap-6">
+                <div className="bg-gradient-to-br from-purple-600 to-pink-600 text-white text-4xl font-bold px-6 py-3 rounded-xl">
+                  {averageReviewRating ? averageReviewRating.toFixed(1) : '0.0'}
+                </div>
+                <div>
+                  <div className="text-white text-xl font-semibold">{getReviewLabel(averageReviewRating)}</div>
+                  <div className="flex items-center gap-1 my-1">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <FaStar key={star} className={`text-sm ${star <= Math.round(averageReviewRating) ? 'text-yellow-400' : 'text-gray-600'}`} />
+                    ))}
+                  </div>
+                  <div className="text-gray-400">Based on {reviews.length} guest reviews</div>
+                </div>
+              </div>
+
+              <form onSubmit={handleReviewSubmit} className="bg-black/25 border border-white/10 rounded-2xl p-4 space-y-4">
+                <div>
+                  <h3 className="text-white font-semibold flex items-center gap-2">
+                    <FaPlus className="text-purple-400 text-sm" /> Write a Review
+                  </h3>
+                  <p className="text-gray-400 text-xs mt-1">Share your experience and give stars up to 5.</p>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    value={reviewForm.name}
+                    onChange={(e) => setReviewForm(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Your name"
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/15 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={reviewForm.country}
+                    onChange={(e) => setReviewForm(prev => ({ ...prev, country: e.target.value }))}
+                    placeholder="Country, e.g. Nepal"
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/15 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-300 mb-2">Give Star Rating *</label>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map(star => {
+                      const active = star <= (hoverRating || reviewForm.rating);
+                      return (
+                        <button
+                          key={star}
+                          type="button"
+                          onMouseEnter={() => setHoverRating(star)}
+                          onMouseLeave={() => setHoverRating(0)}
+                          onClick={() => setReviewForm(prev => ({ ...prev, rating: star }))}
+                          className="transition-transform hover:scale-125 focus:outline-none"
+                          aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                        >
+                          <FaStar className={`text-2xl ${active ? 'text-yellow-400' : 'text-gray-600'}`} />
+                        </button>
+                      );
+                    })}
+                    <span className="text-sm text-gray-400 ml-2">
+                      {reviewForm.rating ? `${reviewForm.rating}/5` : 'Select rating'}
+                    </span>
+                  </div>
+                </div>
+
+                <textarea
+                  value={reviewForm.comment}
+                  onChange={(e) => setReviewForm(prev => ({ ...prev, comment: e.target.value }))}
+                  placeholder="Write your review here..."
+                  rows={4}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/15 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 text-sm resize-none"
+                />
+
+                {reviewError && <p className="text-red-400 text-xs">{reviewError}</p>}
+
+                <button
+                  type="submit"
+                  disabled={reviewSubmitting}
+                  className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {reviewSubmitting ? <><FaSpinner className="animate-spin text-sm" /> Submitting...</> : <><FaCheckCircle className="text-sm" /> Submit Review</>}
+                </button>
+              </form>
+            </div>
+
+            <div className="space-y-5">
+              {reviews.length === 0 && (
+                <div className="text-center py-8 bg-black/20 border border-white/10 rounded-2xl">
+                  <FaStar className="text-3xl text-gray-600 mx-auto mb-2" />
+                  <p className="text-gray-400 text-sm">No guest reviews yet. Be the first to write one.</p>
+                </div>
+              )}
+              {reviews.map(r => (
+                <div key={r.id} className="border-b border-white/10 pb-5 last:border-0 hover:bg-white/5 -mx-2 px-2 py-3 rounded-lg transition-colors">
+                  <div className="flex items-center justify-between gap-4 mb-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold">
+                        {r.user?.first_name?.[0] || r.name?.[0] || 'G'}
+                      </div>
+                      <div>
+                        <div className="text-white font-medium">{r.user?.first_name || r.name || 'Guest'} {r.user?.last_name || ''}</div>
+                        <div className="text-gray-500 text-xs">{r.country || 'Nepal'} · {r.created_at ? new Date(r.created_at).toLocaleDateString() : 'Recent'}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 bg-purple-600/30 text-purple-300 px-3 py-1 rounded-full text-sm font-bold">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <FaStar key={star} className={`text-xs ${star <= Number(r.rating || 0) ? 'text-yellow-400' : 'text-gray-600'}`} />
+                      ))}
+                      <span className="ml-1">{Number(r.rating || 0)}/5</span>
+                    </div>
+                  </div>
+                  <p className="text-gray-300 text-sm leading-relaxed">{r.comment}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
 
         <div ref={dealsRef} className="scroll-mt-20 mb-8"><WeekendDealsCarousel onBook={deal => toast(`Booking deal: ${deal.name}`, 'success')} favHotels={favHotels} toggleFav={toggleFav} onViewDeal={deal => toast(`Viewing deal: ${deal.name}`, 'info')} /></div>
 

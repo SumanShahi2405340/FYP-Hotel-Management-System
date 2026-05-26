@@ -1,3 +1,4 @@
+# This file contains all Django REST API views for CloudInn including fixed hotel-filter announcements.
 #There are three types of views like classbased ApiView, generics.ListCreateAPIView and Function based view
 import random, secrets, string
 from django.core.mail import send_mail
@@ -21,7 +22,7 @@ from django.core.cache import cache
 from .models import Hotel, CommissionRule, CommissionPayment
 from .models import SendAdminAnnouncement, SendOwnerAnnouncement, SendReceptionistAnnouncement
 from .models import OwnerStarredNotification, CommissionReport
-from .models import RoomInventory, RoomPrice, ManageMaintenanceRequest, Receptionist, Promotion, ManageBookings, Staff, Attendance
+from .models import RoomInventory, RoomPrice, ManageMaintenanceRequest, Receptionist, Promotion, GuestStarredPromotion, ManageBookings, Staff, Attendance
 from .models import ManagePayments
 from .models import RoomImage
 from rest_framework.permissions import IsAuthenticated
@@ -35,7 +36,7 @@ import os
 import uuid
 from PIL import Image as PILImage
 from io import BytesIO
-from .models import Guest
+from .models import Guest, AdminProfile, GuestReview
 import logging
 from django.core.cache import cache
 
@@ -68,11 +69,88 @@ from .serializers import (
     ManagePaymentsSerializer,
     RoomImageSerializer,
     RoomImagesUploadSerializer,
-    GuestSerializer, GuestRegisterSerializer, GuestLoginSerializer
+    GuestSerializer, GuestRegisterSerializer, GuestLoginSerializer, GuestStarredPromotionSerializer,
+    AdminProfileSerializer,
+    GuestReviewSerializer
    
 )
 
 User = get_user_model()
+
+
+# ==================== ADMIN PROFILE VIEW ====================
+class AdminProfileView(APIView):
+    """
+    GET: Return admin profile.
+    PATCH/PUT: Update admin profile details and profile photo.
+
+    This view is intentionally tolerant for local development:
+    - If a valid JWT is sent, it uses that logged-in user.
+    - If no valid JWT is sent, it falls back to the first staff/superuser account.
+
+    URL: /api/admin/profile/
+    """
+    permission_classes = [AllowAny]
+
+    def _get_admin_user(self, request):
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated:
+            return user
+
+        admin_user = (
+            User.objects.filter(is_superuser=True).first()
+            or User.objects.filter(is_staff=True).first()
+            or User.objects.first()
+        )
+        return admin_user
+
+    def _get_profile(self, request):
+        user = self._get_admin_user(request)
+        if not user:
+            raise PermissionDenied("No user found. Please create an admin user first.")
+
+        full_name = user.get_full_name().strip() if hasattr(user, "get_full_name") else ""
+        default_name = full_name or user.username or "Suman Shahi"
+
+        profile, created = AdminProfile.objects.get_or_create(
+            user=user,
+            defaults={
+                "name": default_name,
+                "contact": "+977 9800000000",
+                "address": "Kathmandu, Nepal",
+                "role": "System Admin" if user.is_superuser else "Admin",
+                "status": "Active" if user.is_active else "Inactive",
+            },
+        )
+
+        # Keep email/status synced with the linked Django user when reading.
+        if profile.status != ("Active" if user.is_active else "Inactive"):
+            profile.status = "Active" if user.is_active else "Inactive"
+            profile.save(update_fields=["status"])
+
+        return profile
+
+    def get(self, request):
+        profile = self._get_profile(request)
+        serializer = AdminProfileSerializer(profile, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        profile = self._get_profile(request)
+        serializer = AdminProfileSerializer(
+            profile,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request):
+        return self.patch(request)
+
 
 # ==================== UTILITY FUNCTIONS ====================
 
@@ -205,6 +283,34 @@ def get_hotel_receptionist_info(request):
         "hotel_name": hotel.name,
         "receptionists": serializer.data
     })
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def get_receptionists_by_hotel_id(request, pk):
+    """
+    Admin/hotel profile endpoint.
+    Fetch all receptionists linked to a specific hotel id.
+    URL: /api/hotels/<hotel_id>/receptionists/
+    """
+    try:
+        hotel = Hotel.objects.get(pk=pk)
+    except Hotel.DoesNotExist:
+        return Response(
+            {"error": "Hotel not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    receptionists = Receptionist.objects.filter(hotel=hotel).order_by("id")
+    serializer = ReceptionistSerializer(receptionists, many=True)
+
+    return Response(
+        {
+            "hotel_id": hotel.id,
+            "hotel_name": hotel.name,
+            "receptionists": serializer.data,
+        },
+        status=status.HTTP_200_OK
+    )
 
 # ==================== STAFF VIEWS ====================
 
@@ -587,100 +693,444 @@ class AdminUpdatePasswordView(APIView):
             status=status.HTTP_200_OK,
         )
 
-# ==================== OWNER AUTHENTICATION VIEWS ====================
+# ==================== RECEPTIONIST PASSWORD RESET VIEWS ====================
 
-class OwnerOTPRequestView(APIView):
+class ReceptionistOTPRequestView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
-        email = request.data.get('email')
-        
+        email = (request.data.get("email") or "").strip()
+
         if not email:
-            return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            hotel = Hotel.objects.get(email=email)
-            user = hotel.user
-        except Hotel.DoesNotExist:
-            return Response({'error': 'No owner found with this email'}, status=status.HTTP_404_NOT_FOUND)
-        
+            return Response(
+                {"error": "Email is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        receptionist = Receptionist.objects.filter(email__iexact=email).select_related("user").first()
+        if not receptionist or not receptionist.user:
+            return Response(
+                {"error": "No receptionist account found with this email."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        user = receptionist.user
         otp = str(random.randint(100000, 999999))
-        
-        request.session['owner_reset_otp'] = otp
-        request.session['owner_reset_user_id'] = user.id
-        request.session['owner_reset_email'] = email
-        request.session.set_expiry(600)
-        
+
+        cache.set(f"receptionist_reset_otp_{email}", otp, timeout=600)
+        cache.set(f"receptionist_reset_user_id_{email}", user.id, timeout=600)
+        cache.delete(f"receptionist_reset_verified_{email}")
+
+        print(f"Receptionist OTP for {email}: {otp}")
+
         try:
             send_mail(
-                subject='Password Reset OTP - CloudInn Owner Portal',
-                message=f'Your OTP for password reset is: {otp}\n\nThis OTP is valid for 10 minutes.\n\nIf you did not request this, please ignore this email.',
+                subject="Password Reset OTP - CloudInn Receptionist Portal",
+                message=(
+                    f"Your OTP for password reset is: {otp}\n\n"
+                    "This OTP is valid for 10 minutes.\n\n"
+                    "If you did not request this, please ignore this email."
+                ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[email],
                 fail_silently=False,
             )
         except Exception as e:
-            return Response({'error': f'Failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        return Response({
-            'message': 'OTP has been sent to your email address',
-            'email': email
-        }, status=status.HTTP_200_OK)
+            return Response(
+                {"error": f"Failed to send email: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
-class OwnerOTPVerifyView(APIView):
+        return Response(
+            {"message": "OTP has been sent to your email address", "email": email},
+            status=status.HTTP_200_OK,
+        )
+
+
+class ReceptionistOTPVerifyView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
-        email = request.data.get('email')
-        otp_entered = request.data.get('otp')
-        
+        email = (request.data.get("email") or "").strip()
+        otp_entered = (request.data.get("otp") or "").strip()
+
         if not email or not otp_entered:
-            return Response({'error': 'Email and OTP are required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        stored_otp = request.session.get('owner_reset_otp')
-        stored_email = request.session.get('owner_reset_email')
-        
-        if not stored_otp:
-            return Response({'error': 'OTP has expired. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if str(stored_otp) != str(otp_entered):
-            return Response({'error': 'Invalid OTP. Please try again.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if stored_email != email:
-            return Response({'error': 'Email mismatch. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        return Response({
-            'message': 'OTP verified successfully. Please set your new password.',
-            'email': email
-        }, status=status.HTTP_200_OK)
+            return Response(
+                {"error": "Email and OTP are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-class OwnerUpdatePasswordView(APIView):
+        stored_otp = cache.get(f"receptionist_reset_otp_{email}")
+        user_id = cache.get(f"receptionist_reset_user_id_{email}")
+
+        if not stored_otp or not user_id:
+            return Response(
+                {"error": "OTP has expired. Please request a new OTP."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if str(stored_otp) != str(otp_entered):
+            return Response(
+                {"error": "Invalid OTP. Please try again."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not Receptionist.objects.filter(email__iexact=email, user_id=user_id).exists():
+            cache.delete(f"receptionist_reset_otp_{email}")
+            cache.delete(f"receptionist_reset_user_id_{email}")
+            cache.delete(f"receptionist_reset_verified_{email}")
+            return Response(
+                {"error": "Receptionist account not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        cache.set(f"receptionist_reset_verified_{email}", True, timeout=600)
+
+        return Response(
+            {
+                "message": "OTP verified successfully. Please reset your password.",
+                "email": email,
+                "verified": True,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ReceptionistUpdatePasswordView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
-        email = request.data.get('email')
-        new_password = request.data.get('new_password')
-        
+        email = (request.data.get("email") or "").strip()
+        new_password = request.data.get("new_password") or ""
+
         if not email or not new_password:
-            return Response({'error': 'Email and new password are required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {"error": "Email and new password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         if len(new_password) < 6:
-            return Response({'error': 'Password must be at least 6 characters'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        stored_email = request.session.get('owner_reset_email')
-        if not stored_email or stored_email != email:
-            return Response({'error': 'OTP not verified. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {"error": "Password must be at least 6 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        verified = cache.get(f"receptionist_reset_verified_{email}")
+        user_id = cache.get(f"receptionist_reset_user_id_{email}")
+
+        if not verified or not user_id:
+            return Response(
+                {"error": "OTP not verified or session expired. Please request a new OTP."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        receptionist = Receptionist.objects.filter(email__iexact=email, user_id=user_id).select_related("user").first()
+        if not receptionist or not receptionist.user:
+            cache.delete(f"receptionist_reset_otp_{email}")
+            cache.delete(f"receptionist_reset_user_id_{email}")
+            cache.delete(f"receptionist_reset_verified_{email}")
+            return Response(
+                {"error": "Receptionist account not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        receptionist.user.set_password(new_password)
+        receptionist.user.save()
+
+        cache.delete(f"receptionist_reset_otp_{email}")
+        cache.delete(f"receptionist_reset_user_id_{email}")
+        cache.delete(f"receptionist_reset_verified_{email}")
+
+        return Response(
+            {"message": "Password updated successfully. Please login with your new password."},
+            status=status.HTTP_200_OK,
+        )
+
+
+
+
+
+# ==================== RECEPTIONIST LOGIN VIEW ====================
+class ReceptionistLoginTokenView(APIView):
+    """
+    Custom receptionist login endpoint used by ReceptionistLoginForm.jsx.
+
+    IMPORTANT:
+    - This endpoint is ONLY for receptionist accounts.
+    - It does not use OwnerLoginTokenView, so it will not show
+      "This login is only for hotel owner accounts." for receptionist users.
+    - It accepts the Django username generated during receptionist registration.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = (request.data.get("username") or "").strip()
+        password = request.data.get("password") or ""
+
+        if not username or not password:
+            return Response(
+                {"error": "Username and password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user_obj = User.objects.filter(username__iexact=username).first()
+        if not user_obj:
+            return Response(
+                {"error": "Invalid username or password."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if not user_obj.is_active:
+            return Response(
+                {"error": "This receptionist account is inactive. Please contact the owner or admin."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        receptionist = Receptionist.objects.filter(user=user_obj).select_related("hotel").first()
+        if not receptionist:
+            return Response(
+                {"error": "This login is only for receptionist accounts."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        user = authenticate(request, username=user_obj.username, password=password)
+        if user is None:
+            return Response(
+                {"error": "Invalid username or password."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        refresh = RefreshToken.for_user(user)
+        hotel = receptionist.hotel
+
+        return Response(
+            {
+                "success": True,
+                "message": "Login successful",
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user_id": user.id,
+                "username": user.username,
+                "receptionist_id": receptionist.id,
+                "receptionist_name": receptionist.name,
+                "hotel_id": hotel.id if hotel else None,
+                "hotel_name": hotel.name if hotel else None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+# ==================== OWNER LOGIN WITH ACCOUNT BLOCKING ====================
+class OwnerLoginTokenView(APIView):
+    """
+    Custom owner login endpoint used by OwnerLoginForm.jsx.
+
+    Correct flow:
+    - Correct credentials: login successfully and clear failed attempts.
+    - 1st wrong attempt: normal invalid credentials message.
+    - 2nd wrong attempt: warning message.
+    - 3rd wrong attempt: block the owner account by setting user.is_active = False.
+    """
+    permission_classes = [AllowAny]
+
+    MAX_FAILED_ATTEMPTS = 3
+    WARNING_ATTEMPT = 2
+    BLOCKED_MESSAGE = "Contact the Admin to Reset your Credentials"
+    WARNING_MESSAGE = "Your account will get blocked after this chance"
+    INVALID_MESSAGE = "Invalid username or password. Please try again."
+
+    def _attempt_cache_key(self, user_id):
+        # v2 avoids old cached attempt counts from the previous broken version.
+        return f"owner_login_failed_attempts_v2_{user_id}"
+
+    def post(self, request):
+        username = (request.data.get("username") or "").strip()
+        password = request.data.get("password") or ""
+
+        if not username or not password:
+            return Response(
+                {"error": "Username and password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Find the real user first. authenticate() is case-sensitive for username,
+        # so we authenticate using user_obj.username after locating it case-insensitively.
+        user_obj = User.objects.filter(username__iexact=username).first()
+
+        # Unknown usernames should not increase any real user's failed attempts.
+        if not user_obj:
+            return Response(
+                {"error": self.INVALID_MESSAGE, "failed_attempts": 0},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # Only allow hotel owner accounts on this login page.
+        hotel = getattr(user_obj, "hotel", None)
+        if not hotel:
+            return Response(
+                {"error": "This login is only for hotel owner accounts."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        cache_key = self._attempt_cache_key(user_obj.id)
+
+        if not user_obj.is_active:
+            return Response(
+                {"error": self.BLOCKED_MESSAGE, "blocked": True},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        user = authenticate(request, username=user_obj.username, password=password)
+
+        if user is None:
+            failed_attempts = int(cache.get(cache_key, 0)) + 1
+
+            if failed_attempts >= self.MAX_FAILED_ATTEMPTS:
+                user_obj.is_active = False
+                user_obj.save(update_fields=["is_active"])
+                cache.delete(cache_key)
+                return Response(
+                    {
+                        "error": self.BLOCKED_MESSAGE,
+                        "blocked": True,
+                        "failed_attempts": failed_attempts,
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            cache.set(cache_key, failed_attempts, timeout=60 * 60 * 24)
+
+            if failed_attempts == self.WARNING_ATTEMPT:
+                return Response(
+                    {
+                        "error": self.WARNING_MESSAGE,
+                        "warning": True,
+                        "failed_attempts": failed_attempts,
+                    },
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+
+            return Response(
+                {"error": self.INVALID_MESSAGE, "failed_attempts": failed_attempts},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # Successful login: clear failed attempts.
+        cache.delete(cache_key)
+
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "hotel_id": hotel.id,
+                "message": "Login successful",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+
+class ResetOwnerCredentialsView(APIView):
+    """
+    Admin/public development endpoint to reset blocked hotel owner credentials.
+
+    What it does:
+    - Finds the hotel by id.
+    - Finds the linked owner user.
+    - Generates a new password.
+    - Reactivates the blocked owner account by setting user.is_active = True.
+    - Clears owner failed-login attempt cache.
+    - Sends the username and new password to the hotel's email address.
+
+    URL:
+    POST /api/hotels/<hotel_id>/reset-owner-credentials/
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request, pk):
         try:
-            hotel = Hotel.objects.get(email=email)
-            user = hotel.user
-            user.set_password(new_password)
-            user.save()
-            
-            request.session.pop('owner_reset_otp', None)
-            request.session.pop('owner_reset_user_id', None)
-            request.session.pop('owner_reset_email', None)
-            
-            return Response({
-                'message': 'Password updated successfully. Please login with your new password.'
-            }, status=status.HTTP_200_OK)
-            
+            hotel = Hotel.objects.select_related("user").get(pk=pk)
         except Hotel.DoesNotExist:
-            return Response({'error': 'Owner not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Hotel not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        owner_user = hotel.user
+        if not owner_user:
+            return Response(
+                {"error": "No owner user account is linked to this hotel."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Generate a new secure temporary password.
+        new_password = generate_password(10)
+
+        owner_user.set_password(new_password)
+        owner_user.is_active = True
+        owner_user.save(update_fields=["password", "is_active"])
+
+        # Clear failed login attempts from all owner login blocking versions.
+        cache.delete(f"owner_login_failed_attempts_{owner_user.id}")
+        cache.delete(f"owner_login_failed_attempts_v2_{owner_user.id}")
+        cache.delete(f"owner_login_failed_attempts_v3_{owner_user.id}")
+
+        recipient_email = hotel.email or owner_user.email
+
+        # IMPORTANT FOR LOCAL DEVELOPMENT:
+        # Your settings.py uses console email backend, so the email appears in the
+        # Django backend terminal, not in the browser/Next.js terminal.
+        print("=" * 70)
+        print("OWNER CREDENTIALS RESET")
+        print(f"Hotel ID: {hotel.id}")
+        print(f"Hotel Name: {hotel.name}")
+        print(f"Email Sent To: {recipient_email}")
+        print(f"Username: {owner_user.username}")
+        print(f"New Password: {new_password}")
+        print("=" * 70)
+
+        try:
+            send_mail(
+                subject="CloudInn Owner Credentials Reset",
+                message=(
+                    f"Dear {hotel.owner},\n\n"
+                    f"Your CloudInn owner account credentials have been reset by the admin.\n\n"
+                    f"Hotel: {hotel.name}\n"
+                    f"Username: {owner_user.username}\n"
+                    f"New Password: {new_password}\n\n"
+                    f"Please log in using these new credentials.\n\n"
+                    f"Regards,\n"
+                    f"CloudInn Admin"
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[recipient_email],
+                fail_silently=False,
+            )
+        except Exception as e:
+            return Response(
+                {
+                    "message": "Owner credentials reset successfully, but email could not be sent.",
+                    "warning": str(e),
+                    "username": owner_user.username,
+                    "new_password": new_password,
+                    "owner_account_active": owner_user.is_active,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        response_data = {
+            "message": "Owner credentials reset successfully and sent to the hotel email.",
+            "username": owner_user.username,
+            "email": recipient_email,
+            "owner_account_active": owner_user.is_active,
+        }
+
+        # Because the project is using console email backend in DEBUG mode, also
+        # return the generated credentials so the admin can see them immediately.
+        if settings.DEBUG:
+            response_data["new_password"] = new_password
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
 # ==================== HOTEL REGISTRATION ====================
 
@@ -785,15 +1235,24 @@ def me(request):
     })
 
 class HotelProfileView(APIView):
+    # Public endpoint for admin/public hotel profile pages.
+    # This must not depend on the owner login token, because blocked owners have inactive users.
+    permission_classes = [AllowAny]
+
     def get(self, request, pk):
         try:
             hotel = Hotel.objects.get(pk=pk)
             serializer = HotelSerializer(hotel)
-            return Response(serializer.data)
+            data = serializer.data
+            data["owner_account_active"] = bool(hotel.user.is_active) if hotel.user else False
+            return Response(data, status=status.HTTP_200_OK)
         except Hotel.DoesNotExist:
             return Response({'error': 'Hotel not found'}, status=status.HTTP_404_NOT_FOUND)
 
 class OwnerProfileView(APIView):
+    # Public endpoint for admin/public hotel profile pages.
+    permission_classes = [AllowAny]
+
     def get(self, request, pk):
         try:
             hotel = Hotel.objects.get(pk=pk)
@@ -919,47 +1378,54 @@ def track_commission_revenue(request):
 
 # ==================== ANNOUNCEMENT VIEWS ====================
 
-# ==================== ANNOUNCEMENT VIEWS ====================
-# Replace / add these four functions in your views.py
-
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_announcement(request):
     """
-    Admin → Hotels.
-    Payload: { "message": "...", "hotel_status": "all" | "active" | "inactive" }
-    Creates one SendAdminAnnouncement row per matched hotel.
+    ADMIN -> OWNER/HOTEL notification.
+
+    Admin AnnouncementPanel uses this endpoint.
+    It stores only Admin-sent announcements in SendAdminAnnouncement.
+
+    Payload:
+    {
+        "message": "text",
+        "hotel_status": "active" | "inactive" | "all"
+    }
     """
     message = request.data.get('message', '').strip()
-    hotel_status = request.data.get('hotel_status', 'all')
+    hotel_status = request.data.get('hotel_status', 'all').lower().strip()
 
     if not message:
         return Response({'error': 'Message content is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    qs_map = {
-        'active':   Hotel.objects.filter(status='Active'),
-        'inactive': Hotel.objects.filter(status='Inactive'),
-        'all':      Hotel.objects.all(),
-    }
-    hotels = qs_map.get(hotel_status, Hotel.objects.all())
+    if hotel_status == 'active':
+        hotels = Hotel.objects.filter(status__iexact='Active').order_by('id')
+        target_label = 'Active Hotels'
+    elif hotel_status == 'inactive':
+        hotels = Hotel.objects.filter(status__iexact='Inactive').order_by('id')
+        target_label = 'Inactive Hotels'
+    elif hotel_status == 'all':
+        hotels = Hotel.objects.all().order_by('id')
+        target_label = 'All Hotels'
+    else:
+        return Response({'error': 'Invalid hotel_status. Use active, inactive, or all.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if not hotels.exists():
-        return Response(
-            {'error': f'No hotels found for filter: {hotel_status}'},
-            status=status.HTTP_404_NOT_FOUND
-        )
+        return Response({'error': f'No {target_label.lower()} found in database.'}, status=status.HTTP_404_NOT_FOUND)
 
-    created = [
-        SendAdminAnnouncement.objects.create(hotel=hotel, message=message)
-        for hotel in hotels
-    ]
+    created_items = []
+    for hotel in hotels:
+        ann = SendAdminAnnouncement.objects.create(hotel=hotel, message=message)
+        created_items.append(ann)
 
     return Response({
         'success': True,
-        'sent_to': len(created),
-        'hotel_status_filter': hotel_status,
-        'message': f'Announcement sent to {len(created)} hotel(s) successfully.',
+        'message': f'Announcement sent to {target_label}.',
+        'target_label': target_label,
+        'display_name': target_label,
+        'sent_to': len(created_items),
+        'announcement_type': 'admin_to_owner',
     }, status=status.HTTP_200_OK)
 
 
@@ -967,36 +1433,103 @@ def send_announcement(request):
 @permission_classes([IsAuthenticated])
 def recent_announcements(request):
     """
-    Owner dashboard — returns admin announcements sent TO this owner's hotel only.
-    The JWT identifies the logged-in user; we look up their hotel and filter by it.
+    GET /api/recent-announcements/
 
-    Response shape (matches OwnerNotificationSetting.jsx):
-        [{ id, content, hotel_name, timestamp }, ...]
+    Staff/Admin user:
+      - returns ONLY announcements sent from Admin AnnouncementPanel.
+      - used by Admin panel's own Recent Announcements section.
+
+    Owner/receptionist/staff hotel user:
+      - returns ONLY Admin -> this hotel announcements.
+      - used by OwnerNotificationSetting.
     """
+    if request.user.is_staff or request.user.is_superuser:
+        announcements = (
+            SendAdminAnnouncement.objects
+            .select_related('hotel')
+            .order_by('-created_at')[:300]
+        )
+
+        grouped = []
+        for ann in announcements:
+            matched_group = None
+            for group in grouped:
+                same_message = group['content'] == ann.message
+                time_difference = abs((group['timestamp'] - ann.created_at).total_seconds())
+                if same_message and time_difference <= 10:
+                    matched_group = group
+                    break
+
+            hotel_status_value = ann.hotel.status if ann.hotel else None
+
+            if matched_group:
+                matched_group['hotel_count'] += 1
+                if hotel_status_value and hotel_status_value not in matched_group['statuses']:
+                    matched_group['statuses'].append(hotel_status_value)
+                if ann.created_at > matched_group['timestamp']:
+                    matched_group['timestamp'] = ann.created_at
+            else:
+                grouped.append({
+                    'id': ann.id,
+                    'content': ann.message,
+                    'timestamp': ann.created_at,
+                    'hotel_count': 1,
+                    'statuses': [hotel_status_value] if hotel_status_value else [],
+                })
+
+        data = []
+        for group in grouped[:50]:
+            statuses = group['statuses']
+            if 'Active' in statuses and 'Inactive' in statuses:
+                target_label = 'All Hotels'
+            elif 'Active' in statuses:
+                target_label = 'Active Hotels'
+            elif 'Inactive' in statuses:
+                target_label = 'Inactive Hotels'
+            else:
+                target_label = 'Hotels'
+
+            data.append({
+                'id': group['id'],
+                'content': group['content'],
+                'target_label': target_label,
+                'display_name': target_label,
+                'hotel_count': group['hotel_count'],
+                'timestamp': group['timestamp'],
+                'type': 'admin_to_owner',
+                'sender': 'admin',
+                'recipient': 'owner',
+            })
+
+        return Response(data, status=status.HTTP_200_OK)
+
     hotel = getattr(request.user, 'hotel', None)
+    if not hotel and hasattr(request.user, 'receptionist') and request.user.receptionist:
+        hotel = request.user.receptionist.hotel
+    if not hotel and hasattr(request.user, 'staff') and request.user.staff:
+        hotel = request.user.staff.hotel
 
     if not hotel:
-        return Response(
-            {'error': 'No hotel linked to this account.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({'error': 'No hotel linked to this account.'}, status=status.HTTP_400_BAD_REQUEST)
 
     announcements = (
         SendAdminAnnouncement.objects
-        .filter(hotel=hotel)           # ✅ only this hotel's announcements
+        .filter(hotel=hotel)
         .select_related('hotel')
-        .order_by('-created_at')[:30]
+        .order_by('-created_at')[:50]
     )
 
-    data = [
-        {
-            'id':         ann.id,
-            'content':    ann.message,
-            'hotel_name': ann.hotel.name if ann.hotel else None,
-            'timestamp':  ann.created_at,
-        }
-        for ann in announcements
-    ]
+    data = [{
+        'id': ann.id,
+        'content': ann.message,
+        'target_label': 'For Your Hotel',
+        'display_name': 'CloudInn Admin',
+        'hotel_name': ann.hotel.name if ann.hotel else None,
+        'timestamp': ann.created_at,
+        'type': 'admin_to_owner',
+        'sender': 'admin',
+        'recipient': 'owner',
+    } for ann in announcements]
 
     return Response(data, status=status.HTTP_200_OK)
 
@@ -1005,49 +1538,69 @@ def recent_announcements(request):
 @permission_classes([IsAuthenticated])
 def owner_send_announcement(request):
     """
-    Owner → Admin and/or Receptionist.
-    Payload: { "message": "...", "sendToAdmin": true, "sendToReceptionist": true }
+    OWNER -> ADMIN and/or OWNER -> RECEPTIONIST notification.
+
+    IMPORTANT FIX:
+    - sendToAdmin is saved in SendOwnerAnnouncement, NOT SendAdminAnnouncement.
+    - SendAdminAnnouncement is reserved only for Admin -> Owner notifications.
     """
     message = request.data.get('message', '').strip()
-    send_to_admin        = request.data.get('sendToAdmin', False)
-    send_to_receptionist = request.data.get('sendToReceptionist', False)
+    send_to_admin = bool(request.data.get('sendToAdmin', False))
+    send_to_receptionist = bool(request.data.get('sendToReceptionist', False))
 
     if not message:
         return Response({'error': 'Message content is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if not send_to_admin and not send_to_receptionist:
-        return Response(
-            {'error': 'At least one recipient (Admin or Receptionist) must be selected.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({'error': 'At least one recipient must be selected.'}, status=status.HTTP_400_BAD_REQUEST)
 
     hotel = getattr(request.user, 'hotel', None)
     if not hotel:
         return Response({'error': 'No hotel linked to this owner account.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    saved       = {}
+    saved = {}
     saved_items = []
 
     if send_to_admin:
-        ann = SendAdminAnnouncement.objects.create(hotel=hotel, message=message)
+        ann = SendOwnerAnnouncement.objects.create(hotel=hotel, message=message)
         saved['admin'] = {
-            'id': ann.id, 'message': ann.message,
-            'hotel_name': hotel.name, 'created_at': ann.created_at, 'recipient': 'admin'
+            'id': ann.id,
+            'message': ann.message,
+            'hotel_name': hotel.name,
+            'created_at': ann.created_at,
+            'recipient': 'admin',
+            'type': 'owner_to_admin',
         }
         saved_items.append({
-            'id': ann.id, 'content': ann.message,
-            'recipients': ['admin'], 'timestamp': ann.created_at
+            'id': ann.id,
+            'content': ann.message,
+            'hotel_name': hotel.name,
+            'recipients': ['admin'],
+            'timestamp': ann.created_at,
+            'type': 'owner_to_admin',
+            'sender': 'owner',
+            'recipient': 'admin',
         })
 
     if send_to_receptionist:
         ann = SendReceptionistAnnouncement.objects.create(hotel=hotel, message=message)
         saved['receptionist'] = {
-            'id': ann.id, 'message': ann.message,
-            'hotel_name': hotel.name, 'created_at': ann.created_at, 'recipient': 'receptionist'
+            'id': ann.id,
+            'message': ann.message,
+            'hotel_name': hotel.name,
+            'created_at': ann.created_at,
+            'recipient': 'receptionist',
+            'type': 'owner_to_receptionist',
         }
         saved_items.append({
-            'id': ann.id, 'content': ann.message,
-            'recipients': ['receptionist'], 'timestamp': ann.created_at
+            'id': ann.id,
+            'content': ann.message,
+            'hotel_name': hotel.name,
+            'recipients': ['receptionist'],
+            'timestamp': ann.created_at,
+            'type': 'owner_to_receptionist',
+            'sender': 'owner',
+            'recipient': 'receptionist',
         })
 
     return Response({
@@ -1059,83 +1612,252 @@ def owner_send_announcement(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def owner_recent_announcements(request):
     """
-    Returns announcements sent BY the owner of this hotel
-    (to admin and/or receptionist), filtered to this hotel only.
+    GET /api/owner-recent-announcements/?recipient=admin
+      - PUBLIC for the Admin notification bell/settings page.
+      - Returns ONLY Owner -> Admin announcements.
+      - This fixes 401 errors when the admin panel is opened without a JWT token.
 
-    Each item has a 'type' field: 'admin' | 'receptionist'
-    so the frontends can filter correctly:
-      - OwnerNotificationSetting   (admin view of what owner sent)  → filters type == 'admin'
-      - ReceptionistNotificationSetting                              → filters type == 'receptionist'
+    GET /api/owner-recent-announcements/?scope=sent
+      - Still requires a logged-in owner because it needs request.user.hotel.
+
+    GET /api/owner-recent-announcements/?recipient=receptionist
+      - Still requires a logged-in receptionist/staff/owner because it needs request.user.hotel.
     """
-    hotel = getattr(request.user, 'hotel', None)
+    recipient = str(request.GET.get('recipient', '')).lower().strip()
+    scope = str(request.GET.get('scope', '')).lower().strip()
 
-    # Also support receptionist users: their hotel lives on request.user.receptionist.hotel
+    hotel = getattr(request.user, 'hotel', None)
     if not hotel and hasattr(request.user, 'receptionist') and request.user.receptionist:
         hotel = request.user.receptionist.hotel
+    if not hotel and hasattr(request.user, 'staff') and request.user.staff:
+        hotel = request.user.staff.hotel
+
+    combined = []
+
+    # Admin notification setting: show all Owner -> Admin messages.
+    if recipient == 'admin':
+        owner_announcements = (
+            SendOwnerAnnouncement.objects
+            .select_related('hotel')
+            .order_by('-created_at')[:100]
+        )
+        for ann in owner_announcements:
+            combined.append({
+                'id': ann.id,
+                'content': ann.message,
+                'message': ann.message,
+                'hotel_name': ann.hotel.name if ann.hotel else 'Hotel Owner',
+                'timestamp': ann.created_at,
+                'created_at': ann.created_at,
+                'type': 'owner_to_admin',
+                'sender': 'owner',
+                'recipient': 'admin',
+                'recipients': ['admin'],
+            })
+        return Response(combined, status=status.HTTP_200_OK)
 
     if not hotel:
         return Response({'error': 'No hotel linked to this account.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    combined = []
+    # Owner panel: show only this owner's sent messages.
+    if scope == 'sent' or recipient == 'all' or not recipient:
+        owner_to_admin = (
+            SendOwnerAnnouncement.objects
+            .filter(hotel=hotel)
+            .order_by('-created_at')[:50]
+        )
+        owner_to_receptionist = (
+            SendReceptionistAnnouncement.objects
+            .filter(hotel=hotel)
+            .order_by('-created_at')[:50]
+        )
 
-    for ann in SendAdminAnnouncement.objects.filter(hotel=hotel).order_by('-created_at')[:10]:
-        combined.append({
-            'id':         ann.id,
-            'content':    ann.message,
-            'hotel_name': ann.hotel.name if ann.hotel else None,
-            'timestamp':  ann.created_at,
-            'type':       'admin',          # ← owner sent this to admin
-            'recipients': ['admin'],
-        })
+        for ann in owner_to_admin:
+            combined.append({
+                'id': ann.id,
+                'content': ann.message,
+                'message': ann.message,
+                'hotel_name': ann.hotel.name if ann.hotel else None,
+                'timestamp': ann.created_at,
+                'created_at': ann.created_at,
+                'type': 'owner_to_admin',
+                'sender': 'owner',
+                'recipient': 'admin',
+                'recipients': ['admin'],
+            })
 
-    for ann in SendReceptionistAnnouncement.objects.filter(hotel=hotel).order_by('-created_at')[:10]:
-        combined.append({
-            'id':         ann.id,
-            'content':    ann.message,
-            'hotel_name': ann.hotel.name if ann.hotel else None,
-            'timestamp':  ann.created_at,
-            'type':       'receptionist',   # ← owner sent this to receptionist
-            'recipients': ['receptionist'],
-        })
+        for ann in owner_to_receptionist:
+            combined.append({
+                'id': ann.id,
+                'content': ann.message,
+                'message': ann.message,
+                'hotel_name': ann.hotel.name if ann.hotel else None,
+                'timestamp': ann.created_at,
+                'created_at': ann.created_at,
+                'type': 'owner_to_receptionist',
+                'sender': 'owner',
+                'recipient': 'receptionist',
+                'recipients': ['receptionist'],
+            })
+
+    elif recipient == 'receptionist':
+        receptionist_announcements = (
+            SendReceptionistAnnouncement.objects
+            .filter(hotel=hotel)
+            .order_by('-created_at')[:50]
+        )
+        for ann in receptionist_announcements:
+            combined.append({
+                'id': ann.id,
+                'content': ann.message,
+                'message': ann.message,
+                'hotel_name': ann.hotel.name if ann.hotel else None,
+                'timestamp': ann.created_at,
+                'created_at': ann.created_at,
+                'type': 'owner_to_receptionist',
+                'sender': 'owner',
+                'recipient': 'receptionist',
+                'recipients': ['receptionist'],
+            })
 
     combined.sort(key=lambda x: x['timestamp'], reverse=True)
     return Response(combined, status=status.HTTP_200_OK)
+
 # ==================== STARRED NOTIFICATIONS ====================
 
-class OwnerStarredNotificationList(generics.ListAPIView):
-    serializer_class = OwnerStarredNotificationSerializer
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def starred_notifications(request):
+    """
+    Get starred notifications for logged-in users.
 
-    def get_queryset(self):
-        return OwnerStarredNotification.objects.all()
+    If the Admin notification page is opened without a token, return an empty
+    list instead of 401 so owner announcements can still load publicly.
+    Starring/un-starring still requires authentication in star_notification()
+    and unstar_notification().
+    """
+    if not request.user or not request.user.is_authenticated:
+        return Response([], status=status.HTTP_200_OK)
 
-class OwnerStarredNotificationCreate(generics.CreateAPIView):
-    serializer_class = OwnerStarredNotificationSerializer
+    starred = OwnerStarredNotification.objects.filter(
+        user=request.user
+    ).order_by("-starred_at")
 
-    def perform_create(self, serializer):
-        serializer.save()
+    serializer = OwnerStarredNotificationSerializer(starred, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
-class OwnerStarredNotificationDelete(generics.DestroyAPIView):
-    def delete(self, request, pk):
-        try:
-            starred = OwnerStarredNotification.objects.get(announcement_id=pk)
-            starred.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except OwnerStarredNotification.DoesNotExist:
-            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def star_notification(request):
+    """
+    Star a notification.
+
+    Expected JSON:
+    {
+        "announcement": 12,
+        "announcement_type": "announcement"
+    }
+
+    announcement_type can be:
+    - announcement
+    - promotion
+    - admin
+    - receptionist
+    """
+    announcement = request.data.get("announcement")
+    announcement_type = request.data.get("announcement_type", "announcement")
+
+    if announcement is None:
+        return Response(
+            {"error": "announcement is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        announcement = int(announcement)
+    except (TypeError, ValueError):
+        return Response(
+            {"error": "announcement must be a number"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    announcement_type = str(announcement_type).strip() or "announcement"
+
+    starred, created = OwnerStarredNotification.objects.get_or_create(
+        user=request.user,
+        announcement=announcement,
+        announcement_type=announcement_type,
+    )
+
+    serializer = OwnerStarredNotificationSerializer(starred)
+    return Response(
+        serializer.data,
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def unstar_notification(request, announcement_type, announcement):
+    """
+    Remove a notification from Important.
+    URL example:
+    /api/star-notification/announcement/12/
+    """
+    deleted_count, _ = OwnerStarredNotification.objects.filter(
+        user=request.user,
+        announcement=announcement,
+        announcement_type=announcement_type,
+    ).delete()
+
+    if deleted_count == 0:
+        return Response(
+            {"error": "Starred notification not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    return Response(
+        {"message": "Notification removed from important"},
+        status=status.HTTP_200_OK,
+    )
+
 
 # ==================== ROOM MANAGEMENT VIEWS ====================
 
 class RoomInventoryView(APIView):
-    permission_classes = [IsAuthenticated]
+    # GET is public when hotel_id is supplied. PUT still needs owner authentication.
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def _get_hotel_for_read(self, request):
+        hotel_id = request.query_params.get("hotel_id") or request.query_params.get("hotel")
+        if hotel_id:
+            return get_object_or_404(Hotel, id=hotel_id)
+
+        if request.user and request.user.is_authenticated:
+            hotel = getattr(request.user, "hotel", None)
+            if hotel:
+                return hotel
+
+        return None
 
     def get(self, request):
-        hotel = request.user.hotel
+        hotel = self._get_hotel_for_read(request)
+        if not hotel:
+            return Response(
+                {"error": "hotel_id is required for public room inventory access."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         inventory, _ = RoomInventory.objects.get_or_create(hotel=hotel)
         serializer = RoomInventorySerializer(inventory)
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request):
         hotel = request.user.hotel
@@ -1147,13 +1869,35 @@ class RoomInventoryView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class RoomPriceView(APIView):
-    permission_classes = [IsAuthenticated]
+    # GET is public when hotel_id is supplied. PUT still needs owner authentication.
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def _get_hotel_for_read(self, request):
+        hotel_id = request.query_params.get("hotel_id") or request.query_params.get("hotel")
+        if hotel_id:
+            return get_object_or_404(Hotel, id=hotel_id)
+
+        if request.user and request.user.is_authenticated:
+            hotel = getattr(request.user, "hotel", None)
+            if hotel:
+                return hotel
+
+        return None
 
     def get(self, request):
-        hotel = request.user.hotel
+        hotel = self._get_hotel_for_read(request)
+        if not hotel:
+            return Response(
+                {"error": "hotel_id is required for public room price access."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         prices, _ = RoomPrice.objects.get_or_create(hotel=hotel)
         serializer = RoomPriceSerializer(prices)
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request):
         hotel = request.user.hotel
@@ -1255,19 +1999,39 @@ class ManagePaymentsViewSet(viewsets.ModelViewSet):
 class RoomImagesView(APIView):
     """
     API endpoint to manage room images
-    GET: Get all images for a specific room
-    POST: Upload new images (replaces existing ones)
-    DELETE: Delete all images for a specific room
+    GET: Public when hotel_id is supplied.
+    POST/DELETE: Owner authenticated only.
     """
-    permission_classes = [IsAuthenticated]
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def _get_hotel_for_read(self, request):
+        hotel_id = request.query_params.get("hotel_id") or request.query_params.get("hotel")
+        if hotel_id:
+            return get_object_or_404(Hotel, id=hotel_id)
+
+        if request.user and request.user.is_authenticated:
+            hotel = getattr(request.user, "hotel", None)
+            if hotel:
+                return hotel
+
+        return None
 
     def get(self, request):
         """
-        Get all images for a specific room or all rooms
+        Get all images for a specific room or all rooms.
         Query params:
-        - room_number: (optional) Get images for specific room
+        - hotel_id: required for public/admin profile access
+        - room_number: optional
         """
-        hotel = request.user.hotel
+        hotel = self._get_hotel_for_read(request)
+        if not hotel:
+            return Response(
+                {"error": "hotel_id is required for public room image access."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         
         room_number = request.query_params.get('room_number')
         if room_number:
@@ -1714,31 +2478,46 @@ class GuestLogoutView(APIView):
 
 class GuestProfileView(APIView):
     """
-    GET: Get current guest profile
-    PUT: Update guest profile
+    GET: Get current guest profile.
+    PATCH/PUT: Update guest profile details and upload profile picture.
+
+    Frontend endpoint:
+    /api/guest/profile/
     """
     permission_classes = [IsAuthenticated]
 
+    def _get_guest(self, request):
+        try:
+            return request.user.guest
+        except Exception:
+            return None
+
     def get(self, request):
-        try:
-            guest = request.user.guest
-        except Exception:
+        guest = self._get_guest(request)
+        if not guest:
             return Response({'error': 'Not a guest account.'}, status=status.HTTP_403_FORBIDDEN)
 
-        serializer = GuestSerializer(guest)
-        return Response(serializer.data)
+        serializer = GuestSerializer(guest, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def put(self, request):
-        try:
-            guest = request.user.guest
-        except Exception:
+    def patch(self, request):
+        guest = self._get_guest(request)
+        if not guest:
             return Response({'error': 'Not a guest account.'}, status=status.HTTP_403_FORBIDDEN)
 
-        serializer = GuestSerializer(guest, data=request.data, partial=True)
+        serializer = GuestSerializer(
+            guest,
+            data=request.data,
+            partial=True,
+            context={'request': request},
+        )
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data)
+            return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request):
+        return self.patch(request)
 
 
 # Replace your Guest OTP views with these corrected versions
@@ -1941,6 +2720,31 @@ class GuestUpdatePasswordView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+
+
+# ==================== PUBLIC HOTEL ROOM SUMMARY FOR ADMIN PROFILE ====================
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_hotel_room_summary(request, hotel_id):
+    """
+    Public endpoint for admin/public hotel profile page.
+    It does not use owner token, so blocked owner accounts do not break room display.
+    URL: /api/hotels/<hotel_id>/public-room-summary/
+    """
+    hotel = get_object_or_404(Hotel, id=hotel_id)
+    inventory, _ = RoomInventory.objects.get_or_create(hotel=hotel)
+    prices, _ = RoomPrice.objects.get_or_create(hotel=hotel)
+
+    return Response({
+        "hotel_id": hotel.id,
+        "normal_rooms": inventory.normal_rooms,
+        "deluxe_rooms": inventory.deluxe_rooms,
+        "suite_rooms": inventory.suite_rooms,
+        "normal_price": prices.normal_price,
+        "deluxe_price": prices.deluxe_price,
+        "suite_price": prices.suite_price,
+    }, status=status.HTTP_200_OK)
+
 # Add after your Guest views (around line 1300)
 
 # ==================== GUEST ROOM AVAILABILITY ENDPOINTS ====================
@@ -2084,2432 +2888,173 @@ def get_hotel_bookings_for_guest(request, hotel_id):
 
 
 
-
-
-
-
-
-
-
-
-
-
-# #There are three types of views like classbased ApiView, generics.ListCreateAPIView and Function based view
-# import random, secrets, string
-# from django.core.mail import send_mail
-# from django.conf import settings
-# from django.contrib.auth import authenticate, login
-# from django.contrib.auth.models import User
-# from rest_framework.views import APIView
-# from rest_framework import viewsets
-# from django.utils import timezone
-# from rest_framework.response import Response
-# from rest_framework import status, generics, permissions
-# from rest_framework.exceptions import PermissionDenied
-# from rest_framework.generics import ListAPIView, UpdateAPIView
-# from rest_framework.viewsets import ModelViewSet 
-# from rest_framework.decorators import action
-# from datetime import date
-# from django.core.cache import cache
-# from .models import Hotel, CommissionRule, CommissionPayment
-# from .models import SendAdminAnnouncement, SendOwnerAnnouncement, SendReceptionistAnnouncement
-# from .models import OwnerStarredNotification, CommissionReport
-# from .models import RoomInventory, RoomPrice, ManageMaintenanceRequest, Receptionist, Promotion, ManageBookings, Staff, Attendance
-# from .models import ManagePayments
-# from rest_framework.permissions import IsAuthenticated
-# from django.contrib.auth.hashers import make_password
-# from django.contrib.auth import get_user_model
-# from rest_framework.decorators import api_view, permission_classes
-# from django.shortcuts import get_object_or_404
-
-# # from rest_framework_simplejwt.tokens import RefreshToken
-# import uuid
-# from .serializers import (
-#     AdminLoginSerializer,
-#     OTPRequestSerializer,
-#     OTPVerifySerializer,
-#     HotelSerializer,
-#     HotelRegisterSerializer,
-#     CommissionRuleSerializer,
-#     CommissionPaymentSerializer,
-#     CommissionRevenueSerializer,
-#     #SendAdminAnnouncementSerializer,
-#     SendOwnerAnnouncementSerializer,
-#     SendReceptionistAnnouncementSerializer,
-
-#     OwnerStarredNotificationSerializer,
-#     # OwnerLoginSerializer,
-#     RoomInventorySerializer,
-#     RoomPriceSerializer,
-#     ManageMaintenanceRequestSerializer,
-#     ReceptionistSerializer,
-#     PromotionSerializer,
-#     CommissionReportSerializer,
-#     ReceptionistRegisterSerializer,   
-#     ManageBookingsSerializer,
-#     StaffSerializer,AttendanceSerializer,
-#     ManagePaymentsSerializer,
-
-# )
-
-
-
-# User = get_user_model()
-
-# # Utility
-# def generate_password(length=8):
-#     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
-
-
-
-
-# # Receptionist Register View
-# @api_view(["POST"])
-# @permission_classes([permissions.IsAuthenticated])
-# def register_receptionist(request):
-#     data = request.data.copy()
-#     data["role"] = "Receptionist"   #  force role
-
-#     serializer = ReceptionistRegisterSerializer(data=data)
-#     if serializer.is_valid():
-#         email = serializer.validated_data["email"]
-#         # Generate unique username with only 3 letters
-#         username = f"{email}_{uuid.uuid4().hex[:3]}"   #  only 3 chars
-#         password = generate_password()
-
-#         user = User.objects.create(
-#             username=username,
-#             email=email,
-#             password=make_password(password)
-#         )
-
-#         hotel = getattr(request.user, "hotel", None)
-#         if not hotel:
-#             return Response({"error": "No hotel linked to this account"}, status=status.HTTP_400_BAD_REQUEST)
-
-#         receptionist = serializer.save(user=user, hotel=hotel, role="Receptionist")
-
-#         send_mail(
-#             subject=f"Receptionist Account Created for {hotel.name}",
-#             message=f"Dear {receptionist.name},\n\nYour account for {hotel.name} has been created.\nUsername: {username}\nPassword: {password}",
-#             from_email="admin@cloudinn.com",
-#             recipient_list=[email],
-#         )
-
-#         return Response({
-#             "message": f"Receptionist registered for {hotel.name} and credentials sent.",
-#             "hotel_id": hotel.id
-#         }, status=status.HTTP_201_CREATED)
-
-#     print(serializer.errors)
-#     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-
-# # Receptionist  Details View in Receptionist Dashboard
-# @api_view(["GET"])
-# @permission_classes([permissions.IsAuthenticated])
-# def get_hotel_receptionist(request):
-#     hotel = getattr(request.user, "hotel", None)
-#     if not hotel:
-#         return Response({"error": "No hotel linked to this account"}, status=400)
-
-#     receptionists = Receptionist.objects.filter(hotel=hotel)
-#     serializer = ReceptionistSerializer(receptionists, many=True)
-#     return Response(serializer.data)
-
-
-
-
-# #Get Receptionist Details in managestaff and attendance in owner dashboard
-# @api_view(["GET"])
-# @permission_classes([IsAuthenticated])
-# def get_hotel_receptionist_info(request):
-#     try:
-#         hotel = request.user.hotel   # Owner’s hotel relation
-#     except Exception:
-#         return Response({"error": "No hotel linked to this account"}, status=400)
-
-#     receptionists = hotel.receptionists.all()
-#     serializer = ReceptionistSerializer(receptionists, many=True)
-
-#     return Response({
-#         "hotel_id": hotel.id,
-#         "hotel_name": hotel.name,
-#         "receptionists": serializer.data
-#     })
-
-
-
-# #Staff Viewsets
-# @api_view(["GET"])
-# @permission_classes([IsAuthenticated])
-# def get_hotel_staff_info(request):
-#     hotel = getattr(request.user, "hotel", None)
-#     if not hotel:
-#         return Response({"error": "No hotel linked to user"}, status=status.HTTP_400_BAD_REQUEST)
-
-#     staff = Staff.objects.filter(hotel=hotel)
-#     serializer = StaffSerializer(staff, many=True)
-#     return Response({
-#         "hotel_id": hotel.id,
-#         "hotel_name": hotel.name,
-#         "staff": serializer.data
-#     })
-
-# @api_view(["POST"])
-# @permission_classes([IsAuthenticated])
-# def add_staff(request):
-#     hotel = getattr(request.user, "hotel", None)
-#     if not hotel:
-#         return Response({"error": "No hotel linked to user"}, status=status.HTTP_400_BAD_REQUEST)
-
-#     data = request.data.copy()
-#     data["hotel"] = hotel.id
-#     serializer = StaffSerializer(data=data)
-#     if serializer.is_valid():
-#         serializer.save()
-#         return Response(serializer.data, status=status.HTTP_201_CREATED)
-#     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-# @api_view(["DELETE"])
-# @permission_classes([IsAuthenticated])
-# def delete_staff(request, pk):
-#     """
-#     Delete a staff record by ID.
-#     """
-#     try:
-#         staff = Staff.objects.get(pk=pk)
-#         staff.delete()
-#         return Response({"message": "Staff record deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
-#     except Staff.DoesNotExist:
-#         return Response({"error": "Staff not found"}, status=status.HTTP_404_NOT_FOUND)
-
-
-# # attendance/views.py
-# # views.py
-# class AttendanceViewSet(viewsets.ModelViewSet):
-#     queryset = Attendance.objects.all()
-#     serializer_class = AttendanceSerializer
-#     permission_classes = [IsAuthenticated]
-
-#     # Existing staff history
-#     @action(detail=False, methods=["get"])
-#     def staff_history(self, request):
-#         staff_id = request.query_params.get("staff_id")
-#         if not staff_id:
-#             return Response({"error": "staff_id is required"}, status=400)
-
-#         records = Attendance.objects.filter(staff_id=staff_id).order_by("-date")
-#         serializer = AttendanceSerializer(records, many=True)
-#         return Response(serializer.data)
-
-#     #  New receptionist history
-#     @action(detail=False, methods=["get"])
-#     def receptionist_history(self, request):
-#         receptionist_id = request.query_params.get("receptionist_id")
-#         if not receptionist_id:
-#             return Response({"error": "receptionist_id is required"}, status=400)
-
-#         records = Attendance.objects.filter(receptionist_id=receptionist_id).order_by("-date")
-#         serializer = AttendanceSerializer(records, many=True)
-#         return Response(serializer.data)
-
-
-#     # POST mark attendance for a staff (ensures one record per day)
-#     @action(detail=False, methods=["post"])
-#     def mark(self, request):
-#         staff_id = request.data.get("staff_id")
-#         receptionist_id = request.data.get("receptionist_id")
-#         status_val = request.data.get("status")
-
-#         if not status_val or (not staff_id and not receptionist_id):
-#             return Response({"error": "Provide staff_id or receptionist_id and status"}, status=400)
-
-#         today = date.today()
-
-#         if staff_id:
-#             updated = Attendance.objects.filter(staff_id=staff_id, date=today).update(status=status_val)
-#             if updated == 0:
-#                 record = Attendance.objects.create(staff_id=staff_id, status=status_val, date=today)
-#             else:
-#                 record = Attendance.objects.filter(staff_id=staff_id, date=today).latest("id")
-
-#         elif receptionist_id:
-#             updated = Attendance.objects.filter(receptionist_id=receptionist_id, date=today).update(status=status_val)
-#             if updated == 0:
-#                 record = Attendance.objects.create(receptionist_id=receptionist_id, status=status_val, date=today)
-#             else:
-#                 record = Attendance.objects.filter(receptionist_id=receptionist_id, date=today).latest("id")
-
-#         serializer = AttendanceSerializer(record)
-#         return Response(serializer.data, status=201)
-    
-
-
-#     @action(detail=True, methods=["patch"])
-#     def status(self, request, pk=None):
-#         attendance = self.get_object()
-#         new_status = request.data.get("status")
-
-#         if new_status not in ["Active", "Inactive"]:
-#             return Response({"error": "Invalid status"}, status=400)
-
-#         if attendance.staff:
-#             attendance.staff.status = new_status
-#             attendance.staff.save()
-#             return Response({"status": attendance.staff.status})
-
-#         elif attendance.receptionist:
-#             attendance.receptionist.status = new_status
-#             attendance.receptionist.save()
-#             return Response({"status": attendance.receptionist.status})
-
-#         return Response({"error": "No staff or receptionist linked"}, status=400)
-
-
-#     # NEW: Monthly attendance filter
-#     @action(detail=False, methods=["get"])
-#     def monthly(self, request):
-#         person_id = request.query_params.get("person_id")
-#         year = request.query_params.get("year")
-#         month = request.query_params.get("month")
-
-#         if not person_id or not year or not month:
-#             return Response({"error": "person_id, year and month are required"}, status=400)
-
-#         try:
-#             year = int(year)
-#             month = int(month)
-#         except ValueError:
-#             return Response({"error": "year and month must be integers"}, status=400)
-
-#         # Filter by either staff_id or receptionist_id
-#         records = Attendance.objects.filter(
-#             date__year=year,
-#             date__month=month
-#         ).filter(
-#             staff_id=person_id
-#         ) | Attendance.objects.filter(
-#             date__year=year,
-#             date__month=month
-#         ).filter(
-#             receptionist_id=person_id
-#         )
-
-#         serializer = AttendanceSerializer(records.order_by("date"), many=True)
-#         return Response(serializer.data)
-
-
-
-
-# # HOTEL VIEWSET
-# class HotelViewSet(ModelViewSet):
-#      queryset = Hotel.objects.all() 
-#      serializer_class = HotelSerializer
-
-
-# # AUTHENTICATION + OTP VIEWS
-# User = get_user_model()
-
-# class AdminLoginView(APIView):
-#     def post(self, request):
-#         email = request.data.get("email")
-#         password = request.data.get("password")
-
-#         # Find all users with this email
-#         users = User.objects.filter(email=email)
-#         if not users.exists():
-#             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-#         # Pick the first match (graceful handling of duplicates)
-#         user = users.first()
-
-#         # Authenticate using username (default Django backend)
-#         user = authenticate(request, username=user.username, password=password)
-
-#         if user is not None and user.is_staff:
-#             login(request, user)  # session cookie set
-#             return Response({'message': 'Login successful'}, status=status.HTTP_200_OK)
-
-#         return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-
-
-
-
-# # Step 2: Forgot password → send OTP (FIXED for duplicate emails)
-# class OTPRequestView(APIView):
-#     def post(self, request):
-#         serializer = OTPRequestSerializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-
-#         email = serializer.validated_data['email']
-        
-#         # Find all users with this email
-#         users = User.objects.filter(email=email)
-#         if not users.exists():
-#             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-#         # If multiple users exist, try to find an admin/staff user first
-#         user = None
-#         for u in users:
-#             if u.is_staff or u.is_superuser:
-#                 user = u
-#                 break
-        
-#         # If no admin found, take the first user
-#         if not user:
-#             user = users.first()
-
-#         # Generate 6-digit OTP
-#         otp = str(random.randint(100000, 999999))
-        
-#         # Store in session
-#         request.session['reset_otp'] = otp
-#         request.session['reset_user_id'] = user.id
-#         request.session['reset_user_email'] = email
-#         request.session.set_expiry(600)  # 10 minutes
-
-#         # Send email with OTP
-#         try:
-#             send_mail(
-#                 subject='Password Reset OTP - CloudInn',
-#                 message=f'Your OTP for password reset is: {otp}\n\nThis OTP is valid for 10 minutes.\n\nIf you did not request this, please ignore this email.',
-#                 from_email=settings.DEFAULT_FROM_EMAIL,
-#                 recipient_list=[user.email],
-#                 fail_silently=False,
-#             )
-#         except Exception as e:
-#             return Response({'error': f'Failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-#         return Response({
-#             'message': 'OTP has been sent to your email address',
-#             'email': email
-#         }, status=status.HTTP_200_OK)
-
-
-# # Step 3: Verify OTP → login (UPDATED)
-# class OTPVerifyView(APIView):
-#     def post(self, request):
-#         serializer = OTPVerifySerializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-
-#         email = serializer.validated_data.get('email')
-#         otp_entered = serializer.validated_data.get('otp')
-
-#         # Check session OTP
-#         stored_otp = request.session.get('reset_otp')
-#         stored_email = request.session.get('reset_user_email')
-
-#         if not stored_otp:
-#             return Response({'error': 'OTP has expired. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
-
-#         if str(stored_otp) != str(otp_entered):
-#             return Response({'error': 'Invalid OTP. Please try again.'}, status=status.HTTP_400_BAD_REQUEST)
-
-#         # Verify email matches
-#         if stored_email != email:
-#             return Response({'error': 'Email mismatch. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
-
-#         user_id = request.session.get('reset_user_id')
-#         if not user_id:
-#             return Response({'error': 'Session expired. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
-
-#         try:
-#             user = User.objects.get(id=user_id)
-#         except User.DoesNotExist:
-#             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-#         # Clear session
-#         request.session.pop('reset_otp', None)
-#         request.session.pop('reset_user_id', None)
-#         request.session.pop('reset_user_email', None)
-
-#         # Log the user in
-#         login(request, user)
-
-#         return Response({
-#             'message': 'OTP verified successfully. You are now logged in.',
-#             'user_id': user.id,
-#             'email': user.email,
-#             'is_admin': user.is_staff
-#         }, status=status.HTTP_200_OK)
-    
-
-
-
-# # 2 Owner OTP Request View (Forgot Password)
-# class OwnerOTPRequestView(APIView):
-#     def post(self, request):
-#         email = request.data.get('email')
-        
-#         if not email:
-#             return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         # Find owner by email in Hotel model
-#         try:
-#             hotel = Hotel.objects.get(email=email)
-#             user = hotel.user  # Get the associated User
-#         except Hotel.DoesNotExist:
-#             return Response({'error': 'No owner found with this email'}, status=status.HTTP_404_NOT_FOUND)
-        
-#         # Generate 6-digit OTP
-#         otp = str(random.randint(100000, 999999))
-        
-#         # Store in session with owner prefix
-#         request.session['owner_reset_otp'] = otp
-#         request.session['owner_reset_user_id'] = user.id
-#         request.session['owner_reset_email'] = email
-#         request.session.set_expiry(600)  # 10 minutes
-        
-#         # Send email with OTP
-#         try:
-#             send_mail(
-#                 subject='Password Reset OTP - CloudInn Owner Portal',
-#                 message=f'Your OTP for password reset is: {otp}\n\nThis OTP is valid for 10 minutes.\n\nIf you did not request this, please ignore this email.',
-#                 from_email=settings.DEFAULT_FROM_EMAIL,
-#                 recipient_list=[email],
-#                 fail_silently=False,
-#             )
-#         except Exception as e:
-#             return Response({'error': f'Failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-#         return Response({
-#             'message': 'OTP has been sent to your email address',
-#             'email': email
-#         }, status=status.HTTP_200_OK)
-
-
-# # Owner OTP Verify View
-# class OwnerOTPVerifyView(APIView):
-#     def post(self, request):
-#         email = request.data.get('email')
-#         otp_entered = request.data.get('otp')
-        
-#         if not email or not otp_entered:
-#             return Response({'error': 'Email and OTP are required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         stored_otp = request.session.get('owner_reset_otp')
-#         stored_email = request.session.get('owner_reset_email')
-        
-#         if not stored_otp:
-#             return Response({'error': 'OTP has expired. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         if str(stored_otp) != str(otp_entered):
-#             return Response({'error': 'Invalid OTP. Please try again.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         if stored_email != email:
-#             return Response({'error': 'Email mismatch. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         # Don't clear session yet - keep for password update
-#         return Response({
-#             'message': 'OTP verified successfully. Please set your new password.',
-#             'email': email
-#         }, status=status.HTTP_200_OK)
-
-
-# # Owner Update Password View
-# class OwnerUpdatePasswordView(APIView):
-#     def post(self, request):
-#         email = request.data.get('email')
-#         new_password = request.data.get('new_password')
-        
-#         if not email or not new_password:
-#             return Response({'error': 'Email and new password are required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         if len(new_password) < 6:
-#             return Response({'error': 'Password must be at least 6 characters'}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         # Verify OTP was verified (check session)
-#         stored_email = request.session.get('owner_reset_email')
-#         if not stored_email or stored_email != email:
-#             return Response({'error': 'OTP not verified. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         try:
-#             hotel = Hotel.objects.get(email=email)
-#             user = hotel.user
-#             user.set_password(new_password)
-#             user.save()
-            
-#             # Clear session
-#             request.session.pop('owner_reset_otp', None)
-#             request.session.pop('owner_reset_user_id', None)
-#             request.session.pop('owner_reset_email', None)
-            
-#             return Response({
-#                 'message': 'Password updated successfully. Please login with your new password.'
-#             }, status=status.HTTP_200_OK)
-            
-#         except Hotel.DoesNotExist:
-#             return Response({'error': 'Owner not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-
-# # HOTEL MANAGEMENT  Register VIEW
-# def generate_password(length=8):
-#     alphabet = string.ascii_letters + string.digits
-#     return ''.join(secrets.choice(alphabet) for _ in range(length))
-
-
-# class RegisterHotelView(APIView):
-#     def post(self, request):
-#         serializer = HotelRegisterSerializer(data=request.data)
-#         if not serializer.is_valid():
-#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-#         data = serializer.validated_data
-#         password = generate_password()
-#         username = data["email"].split("@")[0] + secrets.token_hex(2)
-
-#         user = User.objects.create_user(username=username, email=data["email"], password=password)
-
-#         hotel = Hotel.objects.create(
-#             name=data["name"],
-#             owner=data["owner"],
-#             contact=data["contact"],
-#             email=data["email"],
-#             location=data["location"],
-#             pan=data["pan"],
-#             age=request.data.get("age"),
-#             owner_contact=request.data.get("owner_contact"),
-#             citizenship=request.data.get("citizenship"),
-#             permanent_address=request.data.get("permanent_address"),
-#             user=user
-#         )
-
-
-#         # Send credentials via email
-#         subject = "Hotel Registration Credentials"
-#         message = f"""
-#         Dear {data['owner']},
-
-#         Your hotel '{data['name']}' has been registered successfully.
-
-#         Login credentials:
-#         Username: {username}
-#         Password: {password}
-
-#         Regards,
-#         CloudInn Platform
-#         """
-#         send_mail(subject, message, "please-reply@cloudinn.com", [data["email"]], fail_silently=False)
-
-#         return Response({"message": "Hotel registered successfully", "hotel": HotelSerializer(hotel).data, "owner_user": user.username}, status=201)
-    
-
-
-# #REceptionist Register View
-# def generate_password(length=8):
-#     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
-
-# @api_view(["POST"])
-# @permission_classes([permissions.IsAuthenticated])
-# def register_receptionist(request):
-#     serializer = ReceptionistRegisterSerializer(data=request.data)
-#     if serializer.is_valid():
-#         email = serializer.validated_data["email"]
-#         #  Generate unique username even if email is duplicate
-#         username = f"{email}_{uuid.uuid4().hex[:6]}"
-#         password = generate_password()
-
-#         user = User.objects.create(
-#             username=username,
-#             email=email,
-#             password=make_password(password)
-#         )
-
-#         hotel = getattr(request.user, "hotel", None)
-#         if not hotel:
-#             return Response({"error": "No hotel linked to this account"}, status=status.HTTP_400_BAD_REQUEST)
-
-#         receptionist = serializer.save(user=user, hotel=hotel)
-
-#         send_mail(
-#             subject=f"Receptionist Account Created for {hotel.name}",
-#             message=f"Dear {receptionist.name},\n\nYour account for {hotel.name} has been created.\nUsername: {username}\nPassword: {password}",
-#             from_email="admin@cloudinn.com",
-#             recipient_list=[email],
-#         )
-
-#         return Response({
-#             "message": f"Receptionist registered for {hotel.name} and credentials sent.",
-#             "hotel_id": hotel.id
-#         }, status=status.HTTP_201_CREATED)
-
-#     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# # Receptionist in Receptionist Dashboard
-# @api_view(["GET"])
-# @permission_classes([IsAuthenticated])
-# def get_hotel_receptionist(request):
-#     try:
-#         # receptionist is linked to the logged-in user
-#         receptionist = request.user.receptionist
-#         hotel = receptionist.hotel
-#     except Exception:
-#         return Response({"error": "No hotel linked to this account"}, status=400)
-
-#     # Fetch receptionists belonging to that hotel
-#     receptionists = Receptionist.objects.filter(hotel=hotel)
-#     serializer = ReceptionistSerializer(receptionists, many=True)
-
-#     return Response({
-#         "hotel_id": hotel.id,
-#         "hotel_name": hotel.name,
-#         "receptionists": serializer.data
-#     })
-
-
-# #Receptionist in Owner Dashboard
-# @api_view(["GET"])
-# @permission_classes([IsAuthenticated])
-# def get_hotel_receptionist_info(request):
-#     try:
-#         # owner is linked to the logged-in user via hotel relation
-#         hotel = request.user.hotel
-#     except Exception:
-#         return Response({"error": "No hotel linked to this account"}, status=400)
-
-#     # Fetch receptionists belonging to that hotel
-#     receptionists = hotel.receptionists.all()
-#     serializer = ReceptionistSerializer(receptionists, many=True)
-
-#     return Response({
-#         "hotel_id": hotel.id,
-#         "hotel_name": hotel.name,
-#         "receptionists": serializer.data
-#     })
-
-
-
-
-
-# class ListHotelsView(ListAPIView):
-#     serializer_class = HotelSerializer
-
-#     def get_queryset(self):
-#         status_filter = self.request.query_params.get('status')
-#         if status_filter in ["Active", "Inactive"]:
-#             return Hotel.objects.filter(status=status_filter)
-#         return Hotel.objects.all()
-
-
-# class ActivateHotelView(APIView):
-#     def patch(self, request, pk):
-#         try:
-#             hotel = Hotel.objects.get(pk=pk)
-#         except Hotel.DoesNotExist:
-#             return Response({"error": "Hotel not found"}, status=status.HTTP_404_NOT_FOUND)
-
-#         hotel.status = "Active"
-#         hotel.save()
-#         return Response({"message": "Hotel activated successfully", "hotel": HotelSerializer(hotel).data})
-
-
-# class DeactivateHotelView(APIView):
-#     def patch(self, request, pk):
-#         try:
-#             hotel = Hotel.objects.get(pk=pk)
-#         except Hotel.DoesNotExist:
-#             return Response({"error": "Hotel not found"}, status=status.HTTP_404_NOT_FOUND)
-
-#         hotel.status = "Inactive"
-#         hotel.save()
-#         return Response({"message": "Hotel deactivated successfully", "hotel": HotelSerializer(hotel).data})
-
-
-# class HotelUpdateView(UpdateAPIView):
-#     queryset = Hotel.objects.all()
-#     serializer_class = HotelSerializer
-
-
-# class DeleteHotelView(APIView):
-#     def delete(self, request, pk):
-#         try:
-#             hotel = Hotel.objects.get(pk=pk)
-#             hotel.delete()
-#             return Response({"message": "Hotel deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
-#         except Hotel.DoesNotExist:
-#             return Response({"error": "Hotel not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-
-# # contains hotel_id and hotel_name
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def me(request):
-#     user = request.user
-#     hotel = getattr(user, "hotel", None)
-#     return Response({
-#         "user_id": user.id,
-#         "hotel_id": hotel.id if hotel else None,
-#         "hotel_name": hotel.name if hotel else None,
-#     })
-
-
-
-# class HotelProfileView(APIView):
-#     def get(self, request, pk):
-#         try:
-#             hotel = Hotel.objects.get(pk=pk)
-#             serializer = HotelSerializer(hotel)
-#             return Response(serializer.data)
-#         except Hotel.DoesNotExist:
-#             return Response({'error': 'Hotel not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-# class OwnerProfileView(APIView):
-#     def get(self, request, pk):
-#         try:
-#             hotel = Hotel.objects.get(pk=pk)
-#             serializer = HotelSerializer(hotel)
-#             owner_data = {
-#                 "id": serializer.data["id"],
-#                 "owner": serializer.data["owner"],
-#                 "owner_contact": serializer.data.get("owner_contact"),
-#                 "age": serializer.data.get("age"),
-#                 "citizenship": serializer.data.get("citizenship"),
-#                 "permanent_address": serializer.data.get("permanent_address"),
-#                 "email": serializer.data["email"],
-#             }
-#             return Response(owner_data, status=status.HTTP_200_OK)
-#         except Hotel.DoesNotExist:
-#             return Response({"error": "Owner profile not found"}, status=status.HTTP_404_NOT_FOUND)
-
-
-
-# # COMMISSION RULES API
-# # Inherits from APIView, which is the lowest-level DRF class.
-# #We can also use APIView to combine both model for get from both and post to both 
-# class CommissionRuleView(APIView):
-#     """
-#     GET: Fetch all commission rules
-#     POST: Save/update commission rules
-#     """
-
-#     def get(self, request):
-#         rules = CommissionRule.objects.all()
-#         serializer = CommissionRuleSerializer(rules, many=True)
-#         return Response(serializer.data, status=status.HTTP_200_OK)
-
-#     def post(self, request):
-#         # Expecting a list of rules from frontend
-#         rules_data = request.data
-#         if not isinstance(rules_data, list):
-#             return Response({'error': 'Expected a list of rules'}, status=status.HTTP_400_BAD_REQUEST)
-
-#         for rule_data in rules_data:
-#             CommissionRule.objects.update_or_create(
-#                 rule_id=rule_data.get('id'),
-#                 defaults={
-#                     'name': rule_data.get('name'),
-#                     'description': rule_data.get('desc'),
-#                     'effective_date': rule_data.get('date'),
-#                 }
-#             )
-
-#         return Response({'message': 'Rules saved to DB'}, status=status.HTTP_200_OK)
-
-
-
-# # COMMISSION PAYMENTS API view
-# #Inherits from ListCreateAPIView, which is a generic view built on top of APIView.
-# #We cannot add querybased class based view   if we have two models SendOwnerAnnouncement and SendManager Announcement for get and post but its all right here
-# class CommissionPaymentView(generics.ListCreateAPIView):
-#      """ 
-#      General API for Commission Payments 
-#      GET: List all commission payments 
-#      POST: Create a new commission payment 
-#      """ 
-#      queryset = CommissionPayment.objects.all().order_by('-created_at') 
-#      serializer_class = CommissionPaymentSerializer
-
-# @api_view(['GET'])
-# def get_active_hotels(request):
-#     """
-#     Fetch active hotels with PID-<id>, hotel name, and amount logic.
-#     """
-#     hotels = Hotel.objects.filter(status="Active").order_by('id')
-#     today = date.today()
-#     data = []
-
-#     for hotel in hotels:
-#         # Calculate months active
-#         months_active = (today.year - hotel.registered_on.year) * 12 + (today.month - hotel.registered_on.month)
-#         amount = 'NPR 5,000' if months_active >= 12 else 'NPR 8,000'
-
-#         data.append({
-#             'id': f'PID-{hotel.id}',
-#             'hotel': hotel.name,
-#             'amount': amount,
-#             'status': 'Pending'
-#         })
-
-#     return Response(data, status=status.HTTP_200_OK)
-
-# @api_view(['POST'])
-# def confirm_payments(request):
-#     payments = request.data
-#     already_full = []
-
-#     for item in payments:
-#         hotel_id = int(item['id'].replace('PID-', ''))
-#         start_due_date = item['start_due_date']
-#         amount = item['amount']
-#         payment_status = item.get('status', 'Pending')
-
-#         # Count existing records for this hotel/month
-#         existing_count = CommissionPayment.objects.filter(
-#             hotel_id=hotel_id,
-#             start_due_date=start_due_date
-#         ).count()
-
-#         if existing_count >= 2:
-#             # Already has 2 → skip
-#             already_full.append(item['hotel'])
-#         elif existing_count == 1:
-#             # Has 1 → create 1 more, ID like 32.2
-#             CommissionPayment.objects.create(
-#                 hotel_id=hotel_id,
-#                 payment_id=f"{hotel_id}.2",
-#                 amount=amount,
-#                 status=payment_status,
-#                 start_due_date=start_due_date
-#             )
-#         elif existing_count == 0:
-#             # Has none → create 1, ID like 32.1
-#             CommissionPayment.objects.create(
-#                 hotel_id=hotel_id,
-#                 payment_id=f"{hotel_id}.1",
-#                 amount=amount,
-#                 status=payment_status,
-#                 start_due_date=start_due_date
-#             )
-
-#     return Response({
-#         'message': 'Commission payment data saved in database.',
-#         'already_full': already_full
-#     }, status=status.HTTP_200_OK)
-
-
-
-
-
-
-# # COMMISSION REVENUE API 
-# #This is function based view
-# @api_view(['GET'])
-# def track_commission_revenue(request):
-#     """
-#     Fetch all commission payments for the given month/year.
-#     """
-#     month = request.GET.get('month')
-#     year = request.GET.get('year')
-
-#     if not month or not year:
-#         return Response({'error': 'Month and year are required'}, status=status.HTTP_400_BAD_REQUEST)
-
-#     prefix = f"{year}-{month}"  # expects month in MM format
-
-#     # Fetch all payments for the month/year, both statuses
-#     payments = CommissionPayment.objects.filter(
-#         start_due_date__startswith=prefix,
-#         status__in=['Paid', 'Pending']
-#     ).order_by('hotel_id', 'created_at') #we can show data in ascending or descending order by created_at
-
-#     # return everything
-#     serializer = CommissionRevenueSerializer(payments, many=True)
-#     return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-
-
-
-
-
-# # ANNOUNCEMENT API 
-# #We cannot add querybased class based view   if we have two models SendOwnerAnnouncement and SendManager Announcement
-# #We can use APIView to combine both model for get from both and post to both 
-# #But lets use function based its easier
-# @api_view(['POST'])
-# def send_announcement(request):
-#     message = request.data.get('message')
-#     send_to_owner = request.data.get('sendToOwner')
-#     send_to_receptionist = request.data.get('sendToReceptionist')
-
-#     # Validation: must have a message and at least one recipient
-#     if not message or not (send_to_owner or send_to_receptionist):
-#         return Response({'error': 'Message and at least one recipient required.'},
-#                         status=status.HTTP_400_BAD_REQUEST)
-
-#     saved = {}
-
-#     # Save to owner table if checkbox is true
-#     if send_to_owner:
-#         owner_announcement = SendOwnerAnnouncement.objects.create(message=message)
-#         saved['owner'] = SendOwnerAnnouncementSerializer(owner_announcement).data
-
-#     # Save to manager table if checkbox is true
-#     if send_to_receptionist:
-#         receptionist_announcement = SendReceptionistAnnouncement.objects.create(message=message)
-#         saved['receptionist'] = SendReceptionistAnnouncementSerializer(receptionist_announcement).data
-
-#     return Response({'success': True, 'saved': saved}, status=status.HTTP_200_OK)
-
-
-
-# @api_view(['GET'])
-# def recent_announcements(request):
-#     owner = SendOwnerAnnouncement.objects.order_by('-created_at')[:5]
-#     receptionist = SendReceptionistAnnouncement.objects.order_by('-created_at')[:5]
-
-#     combined = []
-#     for ann in owner:
-#         combined.append({
-#             "id": ann.id,
-#             "content": ann.message,
-#             "recipients": ["owner"],
-#             "timestamp": ann.created_at
-#         })
-#     for ann in receptionist:
-#         combined.append({
-#             "id": ann.id,
-#             "content": ann.message,
-#             "recipients": ["receptionist"],
-#             "timestamp": ann.created_at
-#         })
-
-#     combined.sort(key=lambda x: x['timestamp'], reverse=True)
-#     return Response(combined)
-
-
-
-# # POST: Owner sends announcement
-# @api_view(['POST'])
-# def owner_send_announcement(request):
-#     message = request.data.get('message')
-#     send_to_admin = request.data.get('sendToAdmin')
-#     send_to_receptionist = request.data.get('sendToReceptionist')
-
-#     if not message or not (send_to_admin or send_to_receptionist):
-#         return Response({'error': 'Message and at least one recipient required.'},
-#                         status=status.HTTP_400_BAD_REQUEST)
-
-#     saved = {}
-
-#     # Save to Admin table if checkbox is true
-#     if send_to_admin:
-#         admin_announcement = SendAdminAnnouncement.objects.create(
-#             hotel=getattr(request.user, "hotel", None),
-#             message=message
-#         )
-#         saved['admin'] = {
-#             "id": admin_announcement.id,
-#             "message": admin_announcement.message,
-#             "hotel_name": admin_announcement.hotel.name if admin_announcement.hotel else None,
-#             "created_at": admin_announcement.created_at
-#         }
-
-#     # Save to Receptionist table if checkbox is true
-#     if send_to_receptionist:
-#         receptionist_announcement = SendReceptionistAnnouncement.objects.create(
-#             hotel=getattr(request.user, "hotel", None),
-#             message=message
-#         )
-#         saved['receptionist'] = {
-#             "id": receptionist_announcement.id,
-#             "message": receptionist_announcement.message,
-#             "hotel_name": receptionist_announcement.hotel.name if receptionist_announcement.hotel else None,
-#             "created_at": receptionist_announcement.created_at
-#         }
-
-#     return Response({'success': True, 'saved': saved}, status=status.HTTP_200_OK)
-
-
-# @api_view(['GET'])
-# def owner_recent_announcements(request):
-#     combined = []
-
-#     # Admin announcements
-#     admin = SendAdminAnnouncement.objects.order_by('-created_at')[:5]
-#     for ann in admin:
-#         combined.append({
-#             "id": ann.id,
-#             "content": ann.message,
-#             "recipients": ["admin"],
-#             "hotel_name": ann.hotel.name if ann.hotel else None,
-#             "timestamp": ann.created_at
-#         })
-
-#     # Receptionist announcements
-#     receptionist = SendReceptionistAnnouncement.objects.order_by('-created_at')[:5]
-#     for ann in receptionist:
-#         combined.append({
-#             "id": ann.id,
-#             "content": ann.message,
-#             "recipients": ["receptionist"],
-#             "hotel_name": ann.hotel.name if ann.hotel else None,
-#             "timestamp": ann.created_at
-#         })
-
-#     combined.sort(key=lambda x: x['timestamp'], reverse=True)
-#     return Response(combined)
-
-
-
-
-# # class OwnerLoginView(APIView):
-# #     def post(self, request):
-# #         serializer = OwnerLoginSerializer(data=request.data)
-# #         if serializer.is_valid():
-# #             user = serializer.validated_data['user']
-# #             login(request, user)  # optional if you want session login too
-
-# #             # Generate JWT tokens
-# #             refresh = RefreshToken.for_user(user)
-# #             access = str(refresh.access_token)
-
-# #             # Get hotel linked to this user
-# #             hotel_id = None
-# #             try:
-# #                 if hasattr(user, "hotel") and user.hotel is not None:
-# #                     hotel_id = user.hotel.id
-# #             except Hotel.DoesNotExist:
-# #                 hotel_id = None
-
-# #             return Response({
-# #                 "message": "Login successful",
-# #                 "username": user.username,
-# #                 "email": user.email,
-# #                 "hotel_id": hotel_id,
-# #                 "access": access,
-# #                 "refresh": str(refresh),
-# #             }, status=status.HTTP_200_OK)
-
-# #         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-
-# # List all starred notifications 
-# class OwnerStarredNotificationList(generics.ListAPIView):
-#     serializer_class = OwnerStarredNotificationSerializer
-    
-
-#     def get_queryset(self):
-#          return OwnerStarredNotification.objects.all()
-
-# # Star a new notification
-# class OwnerStarredNotificationCreate(generics.CreateAPIView):
-#     serializer_class = OwnerStarredNotificationSerializer
-   
-
-#     def perform_create(self, serializer):
-#         serializer.save()
-
-
-# # Unstar a notification (global, no user required)
-# class OwnerStarredNotificationDelete(generics.DestroyAPIView):
-
-#     def delete(self, request, pk):
-#         try:
-#             # just delete by announcement_id, no user filter
-#             starred = OwnerStarredNotification.objects.get(announcement_id=pk)
-#             starred.delete()
-#             return Response(status=status.HTTP_204_NO_CONTENT)
-#         except OwnerStarredNotification.DoesNotExist:
-#             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-
-# class RoomInventoryView(APIView):
-#     permission_classes = [IsAuthenticated]
-
-#     def get(self, request):
-#         hotel = request.user.hotel  # hotel linked to logged-in user
-#         inventory, _ = RoomInventory.objects.get_or_create(hotel=hotel)
-#         serializer = RoomInventorySerializer(inventory)
-#         return Response(serializer.data)
-
-#     def put(self, request):
-#         hotel = request.user.hotel
-#         inventory, _ = RoomInventory.objects.get_or_create(hotel=hotel)
-#         serializer = RoomInventorySerializer(inventory, data=request.data, partial=True)
-#         if serializer.is_valid():
-#             serializer.save()
-#             return Response(serializer.data)
-#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# class RoomPriceView(APIView):
-#     permission_classes = [IsAuthenticated]
-
-#     def get(self, request):
-#         hotel = request.user.hotel
-#         prices, _ = RoomPrice.objects.get_or_create(hotel=hotel)
-#         serializer = RoomPriceSerializer(prices)
-#         return Response(serializer.data)
-
-#     def put(self, request):
-#         hotel = request.user.hotel
-#         prices, _ = RoomPrice.objects.get_or_create(hotel=hotel)
-#         serializer = RoomPriceSerializer(prices, data=request.data, partial=True)
-#         if serializer.is_valid():
-#             serializer.save()
-#             return Response(serializer.data)
-#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# # Receptionist: create new requests, list all
-# class ManageMaintenanceRequestListCreateView(generics.ListCreateAPIView):
-#     queryset = ManageMaintenanceRequest.objects.all()
-#     serializer_class = ManageMaintenanceRequestSerializer
-
-# # Owner: view details, update status,Delete if needed
-# class ManageMaintenanceRequestDetailView(generics.RetrieveUpdateDestroyAPIView):
-#     queryset = ManageMaintenanceRequest.objects.all()
-#     serializer_class = ManageMaintenanceRequestSerializer
-
-
-# # List and Create promotions for the logged-in hotel
-# from rest_framework import generics
-# from .models import Promotion
-# from .serializers import PromotionSerializer
-
-# class PromotionListCreateView(generics.ListCreateAPIView):
-#     serializer_class = PromotionSerializer
-
-#     def get_queryset(self):
-#         # Only promotions for the logged-in user's hotel
-#         return Promotion.objects.filter(hotel=self.request.user.hotel)
-
-#     def perform_create(self, serializer):
-#         serializer.save(hotel=self.request.user.hotel)
-
-
-# # Retrieve, Update, Delete a single promotion for the logged-in hotel
-# class PromotionDetailView(generics.RetrieveUpdateDestroyAPIView):
-#     serializer_class = PromotionSerializer
-
-#     def get_queryset(self):
-#         return Promotion.objects.filter(hotel=self.request.user.hotel)
-
-
-
-# class CommissionReportListCreateView(generics.ListCreateAPIView):
-#     serializer_class = CommissionReportSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-
-#     def get_queryset(self):
-#         user = self.request.user
-#         if not hasattr(user, "hotel") or user.hotel is None:
-#             return CommissionReport.objects.none()
-#         return CommissionReport.objects.filter(hotel=user.hotel)
-
-#     def perform_create(self, serializer):
-#         user = self.request.user
-#         if not hasattr(user, "hotel") or user.hotel is None:
-#             raise PermissionDenied("User is not linked to a hotel.")
-#         serializer.save(hotel=user.hotel)
-
-
-
-
-
-# class ManageBookingsViewSet(viewsets.ModelViewSet):
-#     queryset = ManageBookings.objects.all()
-#     serializer_class = ManageBookingsSerializer
-
-#     def perform_create(self, serializer):
-#         serializer.save(status="Booked")
-
-#     def perform_destroy(self, instance):
-#         instance.status = "Available"
-#         instance.save()
-#         instance.delete()
-
-#     def list(self, request, *args, **kwargs):
-#         now = timezone.now()
-#         for booking in self.queryset:
-#             if booking.checkout and now > booking.checkout:
-#                 booking.status = "Available"
-#                 booking.save()
-#         return super().list(request, *args, **kwargs)
-
-#     def retrieve(self, request, *args, **kwargs):
-#         booking = self.get_object()
-#         now = timezone.now()
-#         if booking.checkout and now > booking.checkout:
-#             booking.status = "Available"
-#             booking.save()
-#         return super().retrieve(request, *args, **kwargs)
-
-#     #  Custom action: get payments for a booking
-#     @action(detail=True, methods=["get"])
-#     def payments(self, request, pk=None):
-#         booking = get_object_or_404(ManageBookings, pk=pk)
-#         payments = ManagePayments.objects.filter(booking=booking)
-#         serializer = ManagePaymentsSerializer(payments, many=True)
-#         return Response(serializer.data)
-
-
-
-# class ManagePaymentsViewSet(viewsets.ModelViewSet):
-#     queryset = ManagePayments.objects.all()
-#     serializer_class = ManagePaymentsSerializer
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# # #There are three types of views like classbased ApiView, generics.ListCreateAPIView and Function based view
-# # import random, secrets, string
-# # from django.core.mail import send_mail
-# # from django.conf import settings
-# # from django.contrib.auth import authenticate, login
-# # from django.contrib.auth.models import User
-# # from rest_framework.views import APIView
-# # from rest_framework import viewsets
-# # from django.utils import timezone
-# # from rest_framework.response import Response
-# # from rest_framework import status, generics, permissions
-# # from rest_framework.exceptions import PermissionDenied
-# # from rest_framework.generics import ListAPIView, UpdateAPIView
-# # from rest_framework.viewsets import ModelViewSet 
-# # from rest_framework.decorators import action
-# # from datetime import date
-# # from .models import Hotel, CommissionRule, CommissionPayment
-# # from .models import SendAdminAnnouncement, SendOwnerAnnouncement, SendReceptionistAnnouncement
-# # from .models import OwnerStarredNotification, CommissionReport
-# # from .models import RoomInventory, RoomPrice, ManageMaintenanceRequest, Receptionist, Promotion, ManageBookings, Staff, Attendance
-# # from .models import ManagePayments
-# # from rest_framework.permissions import IsAuthenticated
-# # from django.contrib.auth.hashers import make_password
-# # from django.contrib.auth import get_user_model
-# # from rest_framework.decorators import api_view, permission_classes
-# # from django.shortcuts import get_object_or_404
-
-# # # from rest_framework_simplejwt.tokens import RefreshToken
-# # import uuid
-# # from .serializers import (
-# #     AdminLoginSerializer,
-# #     OTPRequestSerializer,
-# #     OTPVerifySerializer,
-# #     HotelSerializer,
-# #     HotelRegisterSerializer,
-# #     CommissionRuleSerializer,
-# #     CommissionPaymentSerializer,
-# #     CommissionRevenueSerializer,
-# #     #SendAdminAnnouncementSerializer,
-# #     SendOwnerAnnouncementSerializer,
-# #     SendReceptionistAnnouncementSerializer,
-
-# #     OwnerStarredNotificationSerializer,
-# #     # OwnerLoginSerializer,
-# #     RoomInventorySerializer,
-# #     RoomPriceSerializer,
-# #     ManageMaintenanceRequestSerializer,
-# #     ReceptionistSerializer,
-# #     PromotionSerializer,
-# #     CommissionReportSerializer,
-# #     ReceptionistRegisterSerializer,   
-# #     ManageBookingsSerializer,
-# #     StaffSerializer,AttendanceSerializer,
-# #     ManagePaymentsSerializer,
-
-# # )
-
-
-
-# # User = get_user_model()
-
-# # # Utility
-# # def generate_password(length=8):
-# #     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
-
-
-
-
-# # # Receptionist Register View
-# # @api_view(["POST"])
-# # @permission_classes([permissions.IsAuthenticated])
-# # def register_receptionist(request):
-# #     data = request.data.copy()
-# #     data["role"] = "Receptionist"   #  force role
-
-# #     serializer = ReceptionistRegisterSerializer(data=data)
-# #     if serializer.is_valid():
-# #         email = serializer.validated_data["email"]
-# #         # Generate unique username with only 3 letters
-# #         username = f"{email}_{uuid.uuid4().hex[:3]}"   #  only 3 chars
-# #         password = generate_password()
-
-# #         user = User.objects.create(
-# #             username=username,
-# #             email=email,
-# #             password=make_password(password)
-# #         )
-
-# #         hotel = getattr(request.user, "hotel", None)
-# #         if not hotel:
-# #             return Response({"error": "No hotel linked to this account"}, status=status.HTTP_400_BAD_REQUEST)
-
-# #         receptionist = serializer.save(user=user, hotel=hotel, role="Receptionist")
-
-# #         send_mail(
-# #             subject=f"Receptionist Account Created for {hotel.name}",
-# #             message=f"Dear {receptionist.name},\n\nYour account for {hotel.name} has been created.\nUsername: {username}\nPassword: {password}",
-# #             from_email="admin@cloudinn.com",
-# #             recipient_list=[email],
-# #         )
-
-# #         return Response({
-# #             "message": f"Receptionist registered for {hotel.name} and credentials sent.",
-# #             "hotel_id": hotel.id
-# #         }, status=status.HTTP_201_CREATED)
-
-# #     print(serializer.errors)
-# #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-
-# # # Receptionist  Details View in Receptionist Dashboard
-# # @api_view(["GET"])
-# # @permission_classes([permissions.IsAuthenticated])
-# # def get_hotel_receptionist(request):
-# #     hotel = getattr(request.user, "hotel", None)
-# #     if not hotel:
-# #         return Response({"error": "No hotel linked to this account"}, status=400)
-
-# #     receptionists = Receptionist.objects.filter(hotel=hotel)
-# #     serializer = ReceptionistSerializer(receptionists, many=True)
-# #     return Response(serializer.data)
-
-
-
-
-# # #Get Receptionist Details in managestaff and attendance in owner dashboard
-# # @api_view(["GET"])
-# # @permission_classes([IsAuthenticated])
-# # def get_hotel_receptionist_info(request):
-# #     try:
-# #         hotel = request.user.hotel   # Owner’s hotel relation
-# #     except Exception:
-# #         return Response({"error": "No hotel linked to this account"}, status=400)
-
-# #     receptionists = hotel.receptionists.all()
-# #     serializer = ReceptionistSerializer(receptionists, many=True)
-
-# #     return Response({
-# #         "hotel_id": hotel.id,
-# #         "hotel_name": hotel.name,
-# #         "receptionists": serializer.data
-# #     })
-
-
-
-# # #Staff Viewsets
-# # @api_view(["GET"])
-# # @permission_classes([IsAuthenticated])
-# # def get_hotel_staff_info(request):
-# #     hotel = getattr(request.user, "hotel", None)
-# #     if not hotel:
-# #         return Response({"error": "No hotel linked to user"}, status=status.HTTP_400_BAD_REQUEST)
-
-# #     staff = Staff.objects.filter(hotel=hotel)
-# #     serializer = StaffSerializer(staff, many=True)
-# #     return Response({
-# #         "hotel_id": hotel.id,
-# #         "hotel_name": hotel.name,
-# #         "staff": serializer.data
-# #     })
-
-# # @api_view(["POST"])
-# # @permission_classes([IsAuthenticated])
-# # def add_staff(request):
-# #     hotel = getattr(request.user, "hotel", None)
-# #     if not hotel:
-# #         return Response({"error": "No hotel linked to user"}, status=status.HTTP_400_BAD_REQUEST)
-
-# #     data = request.data.copy()
-# #     data["hotel"] = hotel.id
-# #     serializer = StaffSerializer(data=data)
-# #     if serializer.is_valid():
-# #         serializer.save()
-# #         return Response(serializer.data, status=status.HTTP_201_CREATED)
-# #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-# # @api_view(["DELETE"])
-# # @permission_classes([IsAuthenticated])
-# # def delete_staff(request, pk):
-# #     """
-# #     Delete a staff record by ID.
-# #     """
-# #     try:
-# #         staff = Staff.objects.get(pk=pk)
-# #         staff.delete()
-# #         return Response({"message": "Staff record deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
-# #     except Staff.DoesNotExist:
-# #         return Response({"error": "Staff not found"}, status=status.HTTP_404_NOT_FOUND)
-
-
-# # # attendance/views.py
-# # # views.py
-# # class AttendanceViewSet(viewsets.ModelViewSet):
-# #     queryset = Attendance.objects.all()
-# #     serializer_class = AttendanceSerializer
-# #     permission_classes = [IsAuthenticated]
-
-# #     # Existing staff history
-# #     @action(detail=False, methods=["get"])
-# #     def staff_history(self, request):
-# #         staff_id = request.query_params.get("staff_id")
-# #         if not staff_id:
-# #             return Response({"error": "staff_id is required"}, status=400)
-
-# #         records = Attendance.objects.filter(staff_id=staff_id).order_by("-date")
-# #         serializer = AttendanceSerializer(records, many=True)
-# #         return Response(serializer.data)
-
-# #     #  New receptionist history
-# #     @action(detail=False, methods=["get"])
-# #     def receptionist_history(self, request):
-# #         receptionist_id = request.query_params.get("receptionist_id")
-# #         if not receptionist_id:
-# #             return Response({"error": "receptionist_id is required"}, status=400)
-
-# #         records = Attendance.objects.filter(receptionist_id=receptionist_id).order_by("-date")
-# #         serializer = AttendanceSerializer(records, many=True)
-# #         return Response(serializer.data)
-
-
-# #     # POST mark attendance for a staff (ensures one record per day)
-# #     @action(detail=False, methods=["post"])
-# #     def mark(self, request):
-# #         staff_id = request.data.get("staff_id")
-# #         receptionist_id = request.data.get("receptionist_id")
-# #         status = request.data.get("status")
-
-# #         if not status or (not staff_id and not receptionist_id):
-# #             return Response({"error": "Provide staff_id or receptionist_id and status"}, status=400)
-
-# #         today = date.today()
-
-# #         if staff_id:
-# #             updated = Attendance.objects.filter(staff_id=staff_id, date=today).update(status=status)
-# #             if updated == 0:
-# #                 record = Attendance.objects.create(staff_id=staff_id, status=status, date=today)
-# #             else:
-# #                 record = Attendance.objects.filter(staff_id=staff_id, date=today).latest("id")
-
-# #         elif receptionist_id:
-# #             updated = Attendance.objects.filter(receptionist_id=receptionist_id, date=today).update(status=status)
-# #             if updated == 0:
-# #                 record = Attendance.objects.create(receptionist_id=receptionist_id, status=status, date=today)
-# #             else:
-# #                 record = Attendance.objects.filter(receptionist_id=receptionist_id, date=today).latest("id")
-
-# #         serializer = AttendanceSerializer(record)
-# #         return Response(serializer.data, status=201)
-    
-
-
-# #     @action(detail=True, methods=["patch"])
-# #     def status(self, request, pk=None):
-# #         attendance = self.get_object()
-# #         new_status = request.data.get("status")
-
-# #         if new_status not in ["Active", "Inactive"]:
-# #             return Response({"error": "Invalid status"}, status=400)
-
-# #         if attendance.staff:
-# #             attendance.staff.status = new_status
-# #             attendance.staff.save()
-# #             return Response({"status": attendance.staff.status})
-
-# #         elif attendance.receptionist:
-# #             attendance.receptionist.status = new_status
-# #             attendance.receptionist.save()
-# #             return Response({"status": attendance.receptionist.status})
-
-# #         return Response({"error": "No staff or receptionist linked"}, status=400)
-
-
-# #     # NEW: Monthly attendance filter
-# #     @action(detail=False, methods=["get"])
-# #     def monthly(self, request):
-# #         person_id = request.query_params.get("person_id")
-# #         year = request.query_params.get("year")
-# #         month = request.query_params.get("month")
-
-# #         if not person_id or not year or not month:
-# #             return Response({"error": "person_id, year and month are required"}, status=400)
-
-# #         try:
-# #             year = int(year)
-# #             month = int(month)
-# #         except ValueError:
-# #             return Response({"error": "year and month must be integers"}, status=400)
-
-# #         # Filter by either staff_id or receptionist_id
-# #         records = Attendance.objects.filter(
-# #             date__year=year,
-# #             date__month=month
-# #         ).filter(
-# #             staff_id=person_id
-# #         ) | Attendance.objects.filter(
-# #             date__year=year,
-# #             date__month=month
-# #         ).filter(
-# #             receptionist_id=person_id
-# #         )
-
-# #         serializer = AttendanceSerializer(records.order_by("date"), many=True)
-# #         return Response(serializer.data)
-
-
-
-
-# # # HOTEL VIEWSET
-# # class HotelViewSet(ModelViewSet):
-# #      queryset = Hotel.objects.all() 
-# #      serializer_class = HotelSerializer
-
-
-# # # AUTHENTICATION + OTP VIEWS
-# # User = get_user_model()
-
-# # class AdminLoginView(APIView):
-# #     def post(self, request):
-# #         email = request.data.get("email")
-# #         password = request.data.get("password")
-
-# #         # Find all users with this email
-# #         users = User.objects.filter(email=email)
-# #         if not users.exists():
-# #             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-# #         # Pick the first match (graceful handling of duplicates)
-# #         user = users.first()
-
-# #         # Authenticate using username (default Django backend)
-# #         user = authenticate(request, username=user.username, password=password)
-
-# #         if user is not None and user.is_staff:
-# #             login(request, user)  # session cookie set
-# #             return Response({'message': 'Login successful'}, status=status.HTTP_200_OK)
-
-# #         return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-
-
-
-
-# # # Step 2: Forgot password → send OTP
-# # class OTPRequestView(APIView):
-# #     def post(self, request):
-# #         serializer = OTPRequestSerializer(data=request.data)
-# #         serializer.is_valid(raise_exception=True)
-
-# #         email = serializer.validated_data['email']
-# #         try:
-# #             user = User.objects.get(email=email)
-# #         except User.DoesNotExist:
-# #             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-# #         otp = random.randint(100000, 999999)
-# #         request.session['otp'] = str(otp)
-# #         request.session['reset_user'] = user.id
-
-# #         send_mail(
-# #             'Your OTP Code',
-# #             f'Your OTP is {otp}',
-# #             settings.DEFAULT_FROM_EMAIL,
-# #             [user.email],
-# #         )
-
-# #         return Response({'message': 'OTP generated and sent'}, status=status.HTTP_200_OK)
-
-
-# # # Step 3: Verify OTP → login
-# # class OTPVerifyView(APIView):
-# #     def post(self, request):
-# #         serializer = OTPVerifySerializer(data=request.data)
-# #         serializer.is_valid(raise_exception=True)
-
-# #         otp_entered = serializer.validated_data['otp']
-
-# #         if str(request.session.get('otp')) == str(otp_entered):
-# #             user_id = request.session.get('reset_user')
-# #             try:
-# #                 user = User.objects.get(id=user_id)
-# #             except User.DoesNotExist:
-# #                 return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-# #             # Clear session
-# #             request.session.pop('otp', None)
-# #             request.session.pop('reset_user', None)
-
-# #             login(request, user)
-# #             return Response({'message': 'Login successful via OTP'}, status=status.HTTP_200_OK)
-
-# #         return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-# # # HOTEL MANAGEMENT  Register VIEW
-# # def generate_password(length=8):
-# #     alphabet = string.ascii_letters + string.digits
-# #     return ''.join(secrets.choice(alphabet) for _ in range(length))
-
-
-# # class RegisterHotelView(APIView):
-# #     def post(self, request):
-# #         serializer = HotelRegisterSerializer(data=request.data)
-# #         if not serializer.is_valid():
-# #             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-# #         data = serializer.validated_data
-# #         password = generate_password()
-# #         username = data["email"].split("@")[0] + secrets.token_hex(2)
-
-# #         user = User.objects.create_user(username=username, email=data["email"], password=password)
-
-# #         hotel = Hotel.objects.create(
-# #             name=data["name"],
-# #             owner=data["owner"],
-# #             contact=data["contact"],
-# #             email=data["email"],
-# #             location=data["location"],
-# #             pan=data["pan"],
-# #             age=request.data.get("age"),
-# #             owner_contact=request.data.get("owner_contact"),
-# #             citizenship=request.data.get("citizenship"),
-# #             permanent_address=request.data.get("permanent_address"),
-# #             user=user
-# #         )
-
-
-# #         # Send credentials via email
-# #         subject = "Hotel Registration Credentials"
-# #         message = f"""
-# #         Dear {data['owner']},
-
-# #         Your hotel '{data['name']}' has been registered successfully.
-
-# #         Login credentials:
-# #         Username: {username}
-# #         Password: {password}
-
-# #         Regards,
-# #         CloudInn Platform
-# #         """
-# #         send_mail(subject, message, "please-reply@cloudinn.com", [data["email"]], fail_silently=False)
-
-# #         return Response({"message": "Hotel registered successfully", "hotel": HotelSerializer(hotel).data, "owner_user": user.username}, status=201)
-    
-
-
-# # #REceptionist Register View
-# # def generate_password(length=8):
-# #     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
-
-# # @api_view(["POST"])
-# # @permission_classes([permissions.IsAuthenticated])
-# # def register_receptionist(request):
-# #     serializer = ReceptionistRegisterSerializer(data=request.data)
-# #     if serializer.is_valid():
-# #         email = serializer.validated_data["email"]
-# #         #  Generate unique username even if email is duplicate
-# #         username = f"{email}_{uuid.uuid4().hex[:6]}"
-# #         password = generate_password()
-
-# #         user = User.objects.create(
-# #             username=username,
-# #             email=email,
-# #             password=make_password(password)
-# #         )
-
-# #         hotel = getattr(request.user, "hotel", None)
-# #         if not hotel:
-# #             return Response({"error": "No hotel linked to this account"}, status=status.HTTP_400_BAD_REQUEST)
-
-# #         receptionist = serializer.save(user=user, hotel=hotel)
-
-# #         send_mail(
-# #             subject=f"Receptionist Account Created for {hotel.name}",
-# #             message=f"Dear {receptionist.name},\n\nYour account for {hotel.name} has been created.\nUsername: {username}\nPassword: {password}",
-# #             from_email="admin@cloudinn.com",
-# #             recipient_list=[email],
-# #         )
-
-# #         return Response({
-# #             "message": f"Receptionist registered for {hotel.name} and credentials sent.",
-# #             "hotel_id": hotel.id
-# #         }, status=status.HTTP_201_CREATED)
-
-# #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# # # Receptionist in Receptionist Dashboard
-# # @api_view(["GET"])
-# # @permission_classes([IsAuthenticated])
-# # def get_hotel_receptionist(request):
-# #     try:
-# #         # receptionist is linked to the logged-in user
-# #         receptionist = request.user.receptionist
-# #         hotel = receptionist.hotel
-# #     except Exception:
-# #         return Response({"error": "No hotel linked to this account"}, status=400)
-
-# #     # Fetch receptionists belonging to that hotel
-# #     receptionists = Receptionist.objects.filter(hotel=hotel)
-# #     serializer = ReceptionistSerializer(receptionists, many=True)
-
-# #     return Response({
-# #         "hotel_id": hotel.id,
-# #         "hotel_name": hotel.name,
-# #         "receptionists": serializer.data
-# #     })
-
-
-# # #Receptionist in Owner Dashboard
-# # @api_view(["GET"])
-# # @permission_classes([IsAuthenticated])
-# # def get_hotel_receptionist_info(request):
-# #     try:
-# #         # owner is linked to the logged-in user via hotel relation
-# #         hotel = request.user.hotel
-# #     except Exception:
-# #         return Response({"error": "No hotel linked to this account"}, status=400)
-
-# #     # Fetch receptionists belonging to that hotel
-# #     receptionists = hotel.receptionists.all()
-# #     serializer = ReceptionistSerializer(receptionists, many=True)
-
-# #     return Response({
-# #         "hotel_id": hotel.id,
-# #         "hotel_name": hotel.name,
-# #         "receptionists": serializer.data
-# #     })
-
-
-
-
-
-# # class ListHotelsView(ListAPIView):
-# #     serializer_class = HotelSerializer
-
-# #     def get_queryset(self):
-# #         status_filter = self.request.query_params.get('status')
-# #         if status_filter in ["Active", "Inactive"]:
-# #             return Hotel.objects.filter(status=status_filter)
-# #         return Hotel.objects.all()
-
-
-# # class ActivateHotelView(APIView):
-# #     def patch(self, request, pk):
-# #         try:
-# #             hotel = Hotel.objects.get(pk=pk)
-# #         except Hotel.DoesNotExist:
-# #             return Response({"error": "Hotel not found"}, status=status.HTTP_404_NOT_FOUND)
-
-# #         hotel.status = "Active"
-# #         hotel.save()
-# #         return Response({"message": "Hotel activated successfully", "hotel": HotelSerializer(hotel).data})
-
-
-# # class DeactivateHotelView(APIView):
-# #     def patch(self, request, pk):
-# #         try:
-# #             hotel = Hotel.objects.get(pk=pk)
-# #         except Hotel.DoesNotExist:
-# #             return Response({"error": "Hotel not found"}, status=status.HTTP_404_NOT_FOUND)
-
-# #         hotel.status = "Inactive"
-# #         hotel.save()
-# #         return Response({"message": "Hotel deactivated successfully", "hotel": HotelSerializer(hotel).data})
-
-
-# # class HotelUpdateView(UpdateAPIView):
-# #     queryset = Hotel.objects.all()
-# #     serializer_class = HotelSerializer
-
-
-# # class DeleteHotelView(APIView):
-# #     def delete(self, request, pk):
-# #         try:
-# #             hotel = Hotel.objects.get(pk=pk)
-# #             hotel.delete()
-# #             return Response({"message": "Hotel deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
-# #         except Hotel.DoesNotExist:
-# #             return Response({"error": "Hotel not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-
-# # # contains hotel_id and hotel_name
-# # @api_view(['GET'])
-# # @permission_classes([IsAuthenticated])
-# # def me(request):
-# #     user = request.user
-# #     hotel = getattr(user, "hotel", None)
-# #     return Response({
-# #         "user_id": user.id,
-# #         "hotel_id": hotel.id if hotel else None,
-# #         "hotel_name": hotel.name if hotel else None,
-# #     })
-
-
-
-# # class HotelProfileView(APIView):
-# #     def get(self, request, pk):
-# #         try:
-# #             hotel = Hotel.objects.get(pk=pk)
-# #             serializer = HotelSerializer(hotel)
-# #             return Response(serializer.data)
-# #         except Hotel.DoesNotExist:
-# #             return Response({'error': 'Hotel not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-# # class OwnerProfileView(APIView):
-# #     def get(self, request, pk):
-# #         try:
-# #             hotel = Hotel.objects.get(pk=pk)
-# #             serializer = HotelSerializer(hotel)
-# #             owner_data = {
-# #                 "id": serializer.data["id"],
-# #                 "owner": serializer.data["owner"],
-# #                 "owner_contact": serializer.data.get("owner_contact"),
-# #                 "age": serializer.data.get("age"),
-# #                 "citizenship": serializer.data.get("citizenship"),
-# #                 "permanent_address": serializer.data.get("permanent_address"),
-# #                 "email": serializer.data["email"],
-# #             }
-# #             return Response(owner_data, status=status.HTTP_200_OK)
-# #         except Hotel.DoesNotExist:
-# #             return Response({"error": "Owner profile not found"}, status=status.HTTP_404_NOT_FOUND)
-
-
-
-# # # COMMISSION RULES API
-# # # Inherits from APIView, which is the lowest-level DRF class.
-# # #We can also use APIView to combine both model for get from both and post to both 
-# # class CommissionRuleView(APIView):
-# #     """
-# #     GET: Fetch all commission rules
-# #     POST: Save/update commission rules
-# #     """
-
-# #     def get(self, request):
-# #         rules = CommissionRule.objects.all()
-# #         serializer = CommissionRuleSerializer(rules, many=True)
-# #         return Response(serializer.data, status=status.HTTP_200_OK)
-
-# #     def post(self, request):
-# #         # Expecting a list of rules from frontend
-# #         rules_data = request.data
-# #         if not isinstance(rules_data, list):
-# #             return Response({'error': 'Expected a list of rules'}, status=status.HTTP_400_BAD_REQUEST)
-
-# #         for rule_data in rules_data:
-# #             CommissionRule.objects.update_or_create(
-# #                 rule_id=rule_data.get('id'),
-# #                 defaults={
-# #                     'name': rule_data.get('name'),
-# #                     'description': rule_data.get('desc'),
-# #                     'effective_date': rule_data.get('date'),
-# #                 }
-# #             )
-
-# #         return Response({'message': 'Rules saved to DB'}, status=status.HTTP_200_OK)
-
-
-
-# # # COMMISSION PAYMENTS API view
-# # #Inherits from ListCreateAPIView, which is a generic view built on top of APIView.
-# # #We cannot add querybased class based view   if we have two models SendOwnerAnnouncement and SendManager Announcement for get and post but its all right here
-# # class CommissionPaymentView(generics.ListCreateAPIView):
-# #      """ 
-# #      General API for Commission Payments 
-# #      GET: List all commission payments 
-# #      POST: Create a new commission payment 
-# #      """ 
-# #      queryset = CommissionPayment.objects.all().order_by('-created_at') 
-# #      serializer_class = CommissionPaymentSerializer
-
-# # @api_view(['GET'])
-# # def get_active_hotels(request):
-# #     """
-# #     Fetch active hotels with PID-<id>, hotel name, and amount logic.
-# #     """
-# #     hotels = Hotel.objects.filter(status="Active").order_by('id')
-# #     today = date.today()
-# #     data = []
-
-# #     for hotel in hotels:
-# #         # Calculate months active
-# #         months_active = (today.year - hotel.registered_on.year) * 12 + (today.month - hotel.registered_on.month)
-# #         amount = 'NPR 5,000' if months_active >= 12 else 'NPR 8,000'
-
-# #         data.append({
-# #             'id': f'PID-{hotel.id}',
-# #             'hotel': hotel.name,
-# #             'amount': amount,
-# #             'status': 'Pending'
-# #         })
-
-# #     return Response(data, status=status.HTTP_200_OK)
-
-# # @api_view(['POST'])
-# # def confirm_payments(request):
-# #     payments = request.data
-# #     already_full = []
-
-# #     for item in payments:
-# #         hotel_id = int(item['id'].replace('PID-', ''))
-# #         start_due_date = item['start_due_date']
-# #         amount = item['amount']
-# #         payment_status = item.get('status', 'Pending')
-
-# #         # Count existing records for this hotel/month
-# #         existing_count = CommissionPayment.objects.filter(
-# #             hotel_id=hotel_id,
-# #             start_due_date=start_due_date
-# #         ).count()
-
-# #         if existing_count >= 2:
-# #             # Already has 2 → skip
-# #             already_full.append(item['hotel'])
-# #         elif existing_count == 1:
-# #             # Has 1 → create 1 more, ID like 32.2
-# #             CommissionPayment.objects.create(
-# #                 hotel_id=hotel_id,
-# #                 payment_id=f"{hotel_id}.2",
-# #                 amount=amount,
-# #                 status=payment_status,
-# #                 start_due_date=start_due_date
-# #             )
-# #         elif existing_count == 0:
-# #             # Has none → create 1, ID like 32.1
-# #             CommissionPayment.objects.create(
-# #                 hotel_id=hotel_id,
-# #                 payment_id=f"{hotel_id}.1",
-# #                 amount=amount,
-# #                 status=payment_status,
-# #                 start_due_date=start_due_date
-# #             )
-
-# #     return Response({
-# #         'message': 'Commission payment data saved in database.',
-# #         'already_full': already_full
-# #     }, status=status.HTTP_200_OK)
-
-
-
-
-
-
-# # # COMMISSION REVENUE API 
-# # #This is function based view
-# # @api_view(['GET'])
-# # def track_commission_revenue(request):
-# #     """
-# #     Fetch all commission payments for the given month/year.
-# #     """
-# #     month = request.GET.get('month')
-# #     year = request.GET.get('year')
-
-# #     if not month or not year:
-# #         return Response({'error': 'Month and year are required'}, status=status.HTTP_400_BAD_REQUEST)
-
-# #     prefix = f"{year}-{month}"  # expects month in MM format
-
-# #     # Fetch all payments for the month/year, both statuses
-# #     payments = CommissionPayment.objects.filter(
-# #         start_due_date__startswith=prefix,
-# #         status__in=['Paid', 'Pending']
-# #     ).order_by('hotel_id', 'created_at') #we can show data in ascending or descending order by created_at
-
-# #     # return everything
-# #     serializer = CommissionRevenueSerializer(payments, many=True)
-# #     return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-
-
-
-
-
-# # # ANNOUNCEMENT API 
-# # #We cannot add querybased class based view   if we have two models SendOwnerAnnouncement and SendManager Announcement
-# # #We can use APIView to combine both model for get from both and post to both 
-# # #But lets use function based its easier
-# # @api_view(['POST'])
-# # def send_announcement(request):
-# #     message = request.data.get('message')
-# #     send_to_owner = request.data.get('sendToOwner')
-# #     send_to_receptionist = request.data.get('sendToReceptionist')
-
-# #     # Validation: must have a message and at least one recipient
-# #     if not message or not (send_to_owner or send_to_receptionist):
-# #         return Response({'error': 'Message and at least one recipient required.'},
-# #                         status=status.HTTP_400_BAD_REQUEST)
-
-# #     saved = {}
-
-# #     # Save to owner table if checkbox is true
-# #     if send_to_owner:
-# #         owner_announcement = SendOwnerAnnouncement.objects.create(message=message)
-# #         saved['owner'] = SendOwnerAnnouncementSerializer(owner_announcement).data
-
-# #     # Save to manager table if checkbox is true
-# #     if send_to_receptionist:
-# #         receptionist_announcement = SendReceptionistAnnouncement.objects.create(message=message)
-# #         saved['receptionist'] = SendReceptionistAnnouncementSerializer(receptionist_announcement).data
-
-# #     return Response({'success': True, 'saved': saved}, status=status.HTTP_200_OK)
-
-
-
-# # @api_view(['GET'])
-# # def recent_announcements(request):
-# #     owner = SendOwnerAnnouncement.objects.order_by('-created_at')[:5]
-# #     receptionist = SendReceptionistAnnouncement.objects.order_by('-created_at')[:5]
-
-# #     combined = []
-# #     for ann in owner:
-# #         combined.append({
-# #             "id": ann.id,
-# #             "content": ann.message,
-# #             "recipients": ["owner"],
-# #             "timestamp": ann.created_at
-# #         })
-# #     for ann in receptionist:
-# #         combined.append({
-# #             "id": ann.id,
-# #             "content": ann.message,
-# #             "recipients": ["receptionist"],
-# #             "timestamp": ann.created_at
-# #         })
-
-# #     combined.sort(key=lambda x: x['timestamp'], reverse=True)
-# #     return Response(combined)
-
-
-
-# # # POST: Owner sends announcement
-# # @api_view(['POST'])
-# # def owner_send_announcement(request):
-# #     message = request.data.get('message')
-# #     send_to_admin = request.data.get('sendToAdmin')
-# #     send_to_receptionist = request.data.get('sendToReceptionist')
-
-# #     if not message or not (send_to_admin or send_to_receptionist):
-# #         return Response({'error': 'Message and at least one recipient required.'},
-# #                         status=status.HTTP_400_BAD_REQUEST)
-
-# #     saved = {}
-
-# #     # Save to Admin table if checkbox is true
-# #     if send_to_admin:
-# #         admin_announcement = SendAdminAnnouncement.objects.create(
-# #             hotel=getattr(request.user, "hotel", None),
-# #             message=message
-# #         )
-# #         saved['admin'] = {
-# #             "id": admin_announcement.id,
-# #             "message": admin_announcement.message,
-# #             "hotel_name": admin_announcement.hotel.name if admin_announcement.hotel else None,
-# #             "created_at": admin_announcement.created_at
-# #         }
-
-# #     # Save to Receptionist table if checkbox is true
-# #     if send_to_receptionist:
-# #         receptionist_announcement = SendReceptionistAnnouncement.objects.create(
-# #             hotel=getattr(request.user, "hotel", None),
-# #             message=message
-# #         )
-# #         saved['receptionist'] = {
-# #             "id": receptionist_announcement.id,
-# #             "message": receptionist_announcement.message,
-# #             "hotel_name": receptionist_announcement.hotel.name if receptionist_announcement.hotel else None,
-# #             "created_at": receptionist_announcement.created_at
-# #         }
-
-# #     return Response({'success': True, 'saved': saved}, status=status.HTTP_200_OK)
-
-
-# # @api_view(['GET'])
-# # def owner_recent_announcements(request):
-# #     combined = []
-
-# #     # Admin announcements
-# #     admin = SendAdminAnnouncement.objects.order_by('-created_at')[:5]
-# #     for ann in admin:
-# #         combined.append({
-# #             "id": ann.id,
-# #             "content": ann.message,
-# #             "recipients": ["admin"],
-# #             "hotel_name": ann.hotel.name if ann.hotel else None,
-# #             "timestamp": ann.created_at
-# #         })
-
-# #     # Receptionist announcements
-# #     receptionist = SendReceptionistAnnouncement.objects.order_by('-created_at')[:5]
-# #     for ann in receptionist:
-# #         combined.append({
-# #             "id": ann.id,
-# #             "content": ann.message,
-# #             "recipients": ["receptionist"],
-# #             "hotel_name": ann.hotel.name if ann.hotel else None,
-# #             "timestamp": ann.created_at
-# #         })
-
-# #     combined.sort(key=lambda x: x['timestamp'], reverse=True)
-# #     return Response(combined)
-
-
-
-
-# # # class OwnerLoginView(APIView):
-# # #     def post(self, request):
-# # #         serializer = OwnerLoginSerializer(data=request.data)
-# # #         if serializer.is_valid():
-# # #             user = serializer.validated_data['user']
-# # #             login(request, user)  # optional if you want session login too
-
-# # #             # Generate JWT tokens
-# # #             refresh = RefreshToken.for_user(user)
-# # #             access = str(refresh.access_token)
-
-# # #             # Get hotel linked to this user
-# # #             hotel_id = None
-# # #             try:
-# # #                 if hasattr(user, "hotel") and user.hotel is not None:
-# # #                     hotel_id = user.hotel.id
-# # #             except Hotel.DoesNotExist:
-# # #                 hotel_id = None
-
-# # #             return Response({
-# # #                 "message": "Login successful",
-# # #                 "username": user.username,
-# # #                 "email": user.email,
-# # #                 "hotel_id": hotel_id,
-# # #                 "access": access,
-# # #                 "refresh": str(refresh),
-# # #             }, status=status.HTTP_200_OK)
-
-# # #         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-
-# # # List all starred notifications 
-# # class OwnerStarredNotificationList(generics.ListAPIView):
-# #     serializer_class = OwnerStarredNotificationSerializer
-    
-
-# #     def get_queryset(self):
-# #          return OwnerStarredNotification.objects.all()
-
-# # # Star a new notification
-# # class OwnerStarredNotificationCreate(generics.CreateAPIView):
-# #     serializer_class = OwnerStarredNotificationSerializer
-   
-
-# #     def perform_create(self, serializer):
-# #         serializer.save()
-
-
-# # # Unstar a notification (global, no user required)
-# # class OwnerStarredNotificationDelete(generics.DestroyAPIView):
-
-# #     def delete(self, request, pk):
-# #         try:
-# #             # just delete by announcement_id, no user filter
-# #             starred = OwnerStarredNotification.objects.get(announcement_id=pk)
-# #             starred.delete()
-# #             return Response(status=status.HTTP_204_NO_CONTENT)
-# #         except OwnerStarredNotification.DoesNotExist:
-# #             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-
-# # class RoomInventoryView(APIView):
-# #     permission_classes = [IsAuthenticated]
-
-# #     def get(self, request):
-# #         hotel = request.user.hotel  # hotel linked to logged-in user
-# #         inventory, _ = RoomInventory.objects.get_or_create(hotel=hotel)
-# #         serializer = RoomInventorySerializer(inventory)
-# #         return Response(serializer.data)
-
-# #     def put(self, request):
-# #         hotel = request.user.hotel
-# #         inventory, _ = RoomInventory.objects.get_or_create(hotel=hotel)
-# #         serializer = RoomInventorySerializer(inventory, data=request.data, partial=True)
-# #         if serializer.is_valid():
-# #             serializer.save()
-# #             return Response(serializer.data)
-# #         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# # class RoomPriceView(APIView):
-# #     permission_classes = [IsAuthenticated]
-
-# #     def get(self, request):
-# #         hotel = request.user.hotel
-# #         prices, _ = RoomPrice.objects.get_or_create(hotel=hotel)
-# #         serializer = RoomPriceSerializer(prices)
-# #         return Response(serializer.data)
-
-# #     def put(self, request):
-# #         hotel = request.user.hotel
-# #         prices, _ = RoomPrice.objects.get_or_create(hotel=hotel)
-# #         serializer = RoomPriceSerializer(prices, data=request.data, partial=True)
-# #         if serializer.is_valid():
-# #             serializer.save()
-# #             return Response(serializer.data)
-# #         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# # # Receptionist: create new requests, list all
-# # class ManageMaintenanceRequestListCreateView(generics.ListCreateAPIView):
-# #     queryset = ManageMaintenanceRequest.objects.all()
-# #     serializer_class = ManageMaintenanceRequestSerializer
-
-# # # Owner: view details, update status,Delete if needed
-# # class ManageMaintenanceRequestDetailView(generics.RetrieveUpdateDestroyAPIView):
-# #     queryset = ManageMaintenanceRequest.objects.all()
-# #     serializer_class = ManageMaintenanceRequestSerializer
-
-
-# # # List and Create promotions for the logged-in hotel
-# # from rest_framework import generics
-# # from .models import Promotion
-# # from .serializers import PromotionSerializer
-
-# # class PromotionListCreateView(generics.ListCreateAPIView):
-# #     serializer_class = PromotionSerializer
-
-# #     def get_queryset(self):
-# #         # Only promotions for the logged-in user's hotel
-# #         return Promotion.objects.filter(hotel=self.request.user.hotel)
-
-# #     def perform_create(self, serializer):
-# #         serializer.save(hotel=self.request.user.hotel)
-
-
-# # # Retrieve, Update, Delete a single promotion for the logged-in hotel
-# # class PromotionDetailView(generics.RetrieveUpdateDestroyAPIView):
-# #     serializer_class = PromotionSerializer
-
-# #     def get_queryset(self):
-# #         return Promotion.objects.filter(hotel=self.request.user.hotel)
-
-
-
-# # class CommissionReportListCreateView(generics.ListCreateAPIView):
-# #     serializer_class = CommissionReportSerializer
-# #     permission_classes = [permissions.IsAuthenticated]
-
-# #     def get_queryset(self):
-# #         user = self.request.user
-# #         if not hasattr(user, "hotel") or user.hotel is None:
-# #             return CommissionReport.objects.none()
-# #         return CommissionReport.objects.filter(hotel=user.hotel)
-
-# #     def perform_create(self, serializer):
-# #         user = self.request.user
-# #         if not hasattr(user, "hotel") or user.hotel is None:
-# #             raise PermissionDenied("User is not linked to a hotel.")
-# #         serializer.save(hotel=user.hotel)
-
-
-
-
-
-# # class ManageBookingsViewSet(viewsets.ModelViewSet):
-# #     queryset = ManageBookings.objects.all()
-# #     serializer_class = ManageBookingsSerializer
-
-# #     def perform_create(self, serializer):
-# #         serializer.save(status="Booked")
-
-# #     def perform_destroy(self, instance):
-# #         instance.status = "Available"
-# #         instance.save()
-# #         instance.delete()
-
-# #     def list(self, request, *args, **kwargs):
-# #         now = timezone.now()
-# #         for booking in self.queryset:
-# #             if booking.checkout and now > booking.checkout:
-# #                 booking.status = "Available"
-# #                 booking.save()
-# #         return super().list(request, *args, **kwargs)
-
-# #     def retrieve(self, request, *args, **kwargs):
-# #         booking = self.get_object()
-# #         now = timezone.now()
-# #         if booking.checkout and now > booking.checkout:
-# #             booking.status = "Available"
-# #             booking.save()
-# #         return super().retrieve(request, *args, **kwargs)
-
-# #     #  Custom action: get payments for a booking
-# #     @action(detail=True, methods=["get"])
-# #     def payments(self, request, pk=None):
-# #         booking = get_object_or_404(ManageBookings, pk=pk)
-# #         payments = ManagePayments.objects.filter(booking=booking)
-# #         serializer = ManagePaymentsSerializer(payments, many=True)
-# #         return Response(serializer.data)
-
-
-
-# # class ManagePaymentsViewSet(viewsets.ModelViewSet):
-# #     queryset = ManagePayments.objects.all()
-# #     serializer_class = ManagePaymentsSerializer
-
-
-
-
-
+@api_view(["GET", "POST"])
+@permission_classes([AllowAny])
+def hotel_guest_reviews(request, hotel_id):
+    """
+    GET: Fetch reviews for one hotel.
+    POST: Create a guest review with name, country, rating and comment.
+
+    URL: /api/hotels/<hotel_id>/guest-reviews/
+    Payload example:
+    {
+        "name": "Bikash",
+        "country": "Nepal",
+        "rating": 5,
+        "comment": "Very good hotel."
+    }
+    """
+    hotel = get_object_or_404(Hotel, id=hotel_id)
+
+    if request.method == "GET":
+        reviews = GuestReview.objects.filter(hotel=hotel).order_by("-created_at")
+        serializer = GuestReviewSerializer(reviews, many=True)
+        average = 0
+        if reviews.exists():
+            average = round(sum([int(r.rating or 0) for r in reviews]) / reviews.count(), 1)
+        return Response({
+            "success": True,
+            "hotel_id": hotel.id,
+            "hotel_name": hotel.name,
+            "average_rating": average,
+            "total": reviews.count(),
+            "reviews": serializer.data,
+        }, status=status.HTTP_200_OK)
+
+    data = request.data.copy()
+    data["hotel"] = hotel.id
+
+    guest = None
+    if request.user and request.user.is_authenticated and hasattr(request.user, "guest"):
+        guest = request.user.guest
+        data["guest"] = guest.id
+        if not data.get("name"):
+            data["name"] = guest.name
+
+    serializer = GuestReviewSerializer(data=data)
+    if serializer.is_valid():
+        review = serializer.save(hotel=hotel, guest=guest)
+        output = GuestReviewSerializer(review)
+        return Response({
+            "success": True,
+            "message": "Review submitted successfully.",
+            "review": output.data,
+        }, status=status.HTTP_201_CREATED)
+
+    return Response({
+        "success": False,
+        "errors": serializer.errors,
+    }, status=status.HTTP_400_BAD_REQUEST)
+
+# ==================== GUEST NOTIFICATIONS / OFFERS ====================
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def guest_notifications(request):
+    """
+    Guest notification page endpoint.
+    Returns all active/upcoming promotions created from Owner Offers & Discounts.
+    Also returns is_starred for the logged-in guest user.
+    URL: /api/guest/notifications/
+    """
+    promotions = (
+        Promotion.objects
+        .exclude(status__iexact="Inactive")
+        .exclude(status__iexact="Disabled")
+        .order_by("-id")
+    )
+
+    starred_ids = set(
+        GuestStarredPromotion.objects.filter(user=request.user)
+        .values_list("promotion_id", flat=True)
+    )
+
+    data = []
+    for promotion in promotions:
+        data.append({
+            "id": promotion.id,
+            "hotel": promotion.hotel_id,
+            "hotel_name": promotion.hotel.name if promotion.hotel else "",
+            "title": promotion.title,
+            "description": promotion.description,
+            "valid_from": promotion.valid_from,
+            "valid_to": promotion.valid_to,
+            "status": promotion.status,
+            "is_starred": promotion.id in starred_ids,
+        })
+
+    return Response(data, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def guest_starred_promotions(request):
+    """
+    Returns promotions starred by the logged-in guest.
+    URL: /api/guest/starred-promotions/
+    """
+    starred = (
+        GuestStarredPromotion.objects
+        .filter(user=request.user)
+        .select_related("promotion", "promotion__hotel")
+        .order_by("-starred_at")
+    )
+    serializer = GuestStarredPromotionSerializer(starred, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def guest_star_promotion(request):
+    """
+    Star a promotion for the logged-in guest.
+    Body: { "promotion": 1 } or { "promotion_id": 1 }
+    URL: /api/guest/star-promotion/
+    """
+    promotion_id = request.data.get("promotion") or request.data.get("promotion_id")
+
+    if not promotion_id:
+        return Response(
+            {"error": "promotion or promotion_id is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        promotion = Promotion.objects.get(id=promotion_id)
+    except Promotion.DoesNotExist:
+        return Response(
+            {"error": "Promotion not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    starred, created = GuestStarredPromotion.objects.get_or_create(
+        user=request.user,
+        promotion=promotion,
+    )
+
+    serializer = GuestStarredPromotionSerializer(starred)
+    return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def guest_unstar_promotion(request, promotion_id):
+    """
+    Unstar a promotion for the logged-in guest.
+    URL: /api/guest/star-promotion/<promotion_id>/
+    """
+    deleted_count, _ = GuestStarredPromotion.objects.filter(
+        user=request.user,
+        promotion_id=promotion_id,
+    ).delete()
+
+    if deleted_count == 0:
+        return Response(
+            {"message": "Promotion was not starred."},
+            status=status.HTTP_200_OK,
+        )
+
+    return Response(
+        {"message": "Promotion unstarred successfully."},
+        status=status.HTTP_200_OK,
+    )

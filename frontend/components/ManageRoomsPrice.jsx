@@ -30,6 +30,16 @@ const calcTotalPrice = (checkin, checkout, pricePerNight) => {
   return { days, total: days * parseFloat(pricePerNight) };
 };
 
+// ── Format room prices in Nepali Rupees (NPR) ───────────────────────────────
+const formatNPR = (amount) => {
+  const number = Number(amount || 0);
+  return new Intl.NumberFormat('en-NP', {
+    style: 'currency',
+    currency: 'NPR',
+    maximumFractionDigits: 0,
+  }).format(number);
+};
+
 export default function ManageRoomsPrice() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [roomView, setRoomView] = useState("all");
@@ -55,6 +65,7 @@ export default function ManageRoomsPrice() {
   const [normalPrice, setNormalPrice] = useState("");
   const [deluxePrice, setDeluxePrice] = useState("");
   const [suitePrice, setSuitePrice]   = useState("");
+  const [priceErrors, setPriceErrors] = useState({});
 
   const [roomPrices, setRoomPrices] = useState({ normal: null, deluxe: null, suite: null });
   const [bookings, setBookings]     = useState([]);
@@ -306,15 +317,44 @@ export default function ManageRoomsPrice() {
 
   const handleSavePrice = async (e) => {
     e.preventDefault();
-    if ([normalPrice, deluxePrice, suitePrice].every((val) => val === "")) {
+
+    const enteredPrices = {
+      normalPrice,
+      deluxePrice,
+      suitePrice,
+    };
+
+    if (Object.values(enteredPrices).every((val) => val === "")) {
+      setPriceErrors({ form: "Please enter at least one room price." });
       alert("Please enter at least one price");
       return;
     }
+
+    const errors = {};
+    Object.entries(enteredPrices).forEach(([field, value]) => {
+      if (value === "") return;
+      const numericValue = Number(value);
+
+      if (Number.isNaN(numericValue)) {
+        errors[field] = "Please enter a valid number.";
+      } else if (numericValue < 0) {
+        errors[field] = "Negative room price is not allowed.";
+      }
+    });
+
+    if (Object.keys(errors).length > 0) {
+      setPriceErrors(errors);
+      alert("Negative room price is not allowed. Please enter 0 or a positive NPR amount.");
+      return;
+    }
+
+    setPriceErrors({});
+
     try {
       const response = await api.put(PRICE_API, {
-        normal_price: Number(normalPrice),
-        deluxe_price: Number(deluxePrice),
-        suite_price:  Number(suitePrice),
+        normal_price: normalPrice === "" ? Number(roomPrices.normal || 0) : Number(normalPrice),
+        deluxe_price: deluxePrice === "" ? Number(roomPrices.deluxe || 0) : Number(deluxePrice),
+        suite_price:  suitePrice === "" ? Number(roomPrices.suite || 0) : Number(suitePrice),
       });
       const updated = response.data;
       setRoomPrices({
@@ -334,10 +374,12 @@ export default function ManageRoomsPrice() {
       }));
       alert("Room prices saved successfully!");
       setShowPriceForm(false);
+      setPriceErrors({});
       setNormalPrice(""); setDeluxePrice(""); setSuitePrice("");
     } catch (err) {
       console.error("Error saving prices:", err.response?.data || err);
-      alert("Error saving prices");
+      const backendMessage = err.response?.data?.error || err.response?.data?.detail || "Error saving prices";
+      alert(backendMessage);
     }
   };
 
@@ -384,7 +426,7 @@ export default function ManageRoomsPrice() {
             <div>
               <h3 className="text-xl font-bold text-white">{typeName} Rooms</h3>
               <p className="text-sm text-gray-400">
-                ${price !== null ? Number(price).toFixed(2) : "—"} per night
+                {price !== null ? formatNPR(price) : "—"} per night
               </p>
             </div>
           </div>
@@ -431,7 +473,7 @@ export default function ManageRoomsPrice() {
                   </div>
                   {priceCalc && (
                     <div className="mt-2 text-[10px] text-gray-400 leading-tight">
-                      <p>{priceCalc.days}n · ${priceCalc.total.toFixed(0)}</p>
+                      <p>{priceCalc.days}n · {formatNPR(priceCalc.total)}</p>
                     </div>
                   )}
                 </div>
@@ -601,18 +643,49 @@ export default function ManageRoomsPrice() {
                     <FaMoneyBillWave className="text-purple-400" /> Update Room Prices
                   </h2>
                   <form onSubmit={handleSavePrice} className="space-y-4">
+                    {priceErrors.form && (
+                      <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                        {priceErrors.form}
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {[
-                        { label: "Normal Room Price ($)", val: normalPrice, set: setNormalPrice, cur: roomPrices.normal },
-                        { label: "Deluxe Room Price ($)", val: deluxePrice, set: setDeluxePrice, cur: roomPrices.deluxe },
-                        { label: "Suite Room Price ($)",  val: suitePrice,  set: setSuitePrice,  cur: roomPrices.suite },
-                      ].map(({ label, val, set, cur }) => (
+                        { keyName: "normalPrice", label: "Normal Room Price (NPR)", val: normalPrice, set: setNormalPrice, cur: roomPrices.normal },
+                        { keyName: "deluxePrice", label: "Deluxe Room Price (NPR)", val: deluxePrice, set: setDeluxePrice, cur: roomPrices.deluxe },
+                        { keyName: "suitePrice",  label: "Suite Room Price (NPR)",  val: suitePrice,  set: setSuitePrice,  cur: roomPrices.suite },
+                      ].map(({ keyName, label, val, set, cur }) => (
                         <div key={label}>
                           <label className="block text-sm font-medium text-gray-300 mb-2">{label}</label>
-                          <input type="number" step="0.01" value={val} onChange={(e) => set(e.target.value)}
-                            placeholder={`Current: $${cur || 0}`}
-                            className="w-full px-4 py-2.5 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 transition-all"
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={val}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              set(value);
+                              setPriceErrors((prev) => {
+                                const next = { ...prev };
+                                delete next.form;
+                                if (value !== "" && Number(value) < 0) {
+                                  next[keyName] = "Negative room price is not allowed.";
+                                } else {
+                                  delete next[keyName];
+                                }
+                                return next;
+                              });
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "-" || e.key === "e" || e.key === "E") {
+                                e.preventDefault();
+                              }
+                            }}
+                            placeholder={`Current: ${formatNPR(cur || 0)}`}
+                            className={`w-full px-4 py-2.5 bg-white/5 border rounded-xl text-white placeholder-gray-400 focus:outline-none transition-all ${priceErrors[keyName] ? "border-red-500 focus:border-red-500" : "border-white/20 focus:border-purple-500"}`}
                           />
+                          {priceErrors[keyName] && (
+                            <p className="mt-1 text-xs text-red-400">{priceErrors[keyName]}</p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -727,10 +800,10 @@ export default function ManageRoomsPrice() {
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-gray-400">Price per night</p>
-                  <p className="text-2xl font-bold text-purple-400">${Number(selectedRoom.price).toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-purple-400">{formatNPR(selectedRoom.price)}</p>
                   {selectedRoom.priceCalc && (
                     <p className="text-sm text-green-400 font-semibold mt-1">
-                      {selectedRoom.priceCalc.days} nights · Total ${selectedRoom.priceCalc.total.toFixed(2)}
+                      {selectedRoom.priceCalc.days} nights · Total {formatNPR(selectedRoom.priceCalc.total)}
                     </p>
                   )}
                 </div>
@@ -808,7 +881,7 @@ export default function ManageRoomsPrice() {
                   )}
                   {selectedRoom.priceCalc && (
                     <p className="text-sm font-bold text-blue-300">
-                      Stay: {selectedRoom.priceCalc.days} night{selectedRoom.priceCalc.days > 1 ? "s" : ""} · Total: ${selectedRoom.priceCalc.total.toFixed(2)}
+                      Stay: {selectedRoom.priceCalc.days} night{selectedRoom.priceCalc.days > 1 ? "s" : ""} · Total: {formatNPR(selectedRoom.priceCalc.total)}
                     </p>
                   )}
                 </div>
